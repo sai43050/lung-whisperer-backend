@@ -19,7 +19,10 @@ app.add_middleware(
 classes = ["Normal", "Crackle", "Wheeze", "Asthma", "COPD"]
 
 model = LungWhispererModel()
-model.load_state_dict(torch.load("model.pth", map_location=torch.device("cpu")))
+import os
+
+model_path = os.path.join(os.path.dirname(__file__), "model.pth")
+model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu")))
 model.eval()
 
 @app.get("/")
