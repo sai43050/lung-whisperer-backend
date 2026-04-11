@@ -40,7 +40,7 @@ import json
 # Create Tables
 db_models.Base.metadata.create_all(bind=database.engine)
 
-app = FastAPI(title="Multi-Modal Lung Disease API")
+app = FastAPI(title="Lung Whisperer API")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 @app.get("/api/health")
@@ -314,6 +314,9 @@ class AlertCreate(BaseModel):
 class ChatMessage(BaseModel):
     message: str
 
+class ReportUpdate(BaseModel):
+    report: str
+
 # -------------------------------
 
 @app.post("/api/auth/register")
@@ -350,7 +353,7 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
         )
     
     access_token = auth.create_access_token(data={"sub": user.username, "role": user.role})
-    return {"access_token": access_token, "token_type": "bearer", "user_id": user.id, "username": user.username, "role": user.role}
+    return {"access_token": access_token, "token_type": "bearer", "user_id": user.id, "username": user.username, "role": user.role, "full_name": user.full_name}
 
 @app.post("/api/auth/mock-login")
 def mock_login(username: str, db: Session = Depends(database.get_db)):
@@ -365,7 +368,7 @@ def mock_login(username: str, db: Session = Depends(database.get_db)):
         db.refresh(user)
     
     access_token = auth.create_access_token(data={"sub": user.username, "role": user.role})
-    return {"access_token": access_token, "token_type": "bearer", "user_id": user.id, "username": user.username, "role": user.role}
+    return {"access_token": access_token, "token_type": "bearer", "user_id": user.id, "username": user.username, "role": user.role, "full_name": user.full_name}
 
 @app.post("/api/predict")
 async def predict_scan(
@@ -388,7 +391,10 @@ async def predict_scan(
         user_id=user.id,
         image_path=file_path,
         prediction=f"{result['prediction']}",
-        confidence=result['confidence']
+        confidence=result['confidence'],
+        gradcam_data=result.get("gradcam", ""),
+        findings=json.dumps(result.get("findings", [])),
+        suggestions=json.dumps(result.get("suggestions", []))
     )
     db.add(scan_record)
     db.commit()
@@ -442,10 +448,44 @@ async def predict_audio(
         "modality": "audio"
     }
 
+@app.get("/api/scan/{scan_id}")
+def get_scan_result(scan_id: int, current_user: db_models.User = Depends(get_current_user), db: Session = Depends(database.get_db)):
+    scan = db.query(db_models.ScanRecord).filter(db_models.ScanRecord.id == scan_id).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    
+    # Check authorization (own scan or doctor)
+    if current_user.id != scan.user_id and current_user.role != 'doctor':
+        raise HTTPException(status_code=403, detail="Not authorized to view this scan")
+    
+    return {
+        "id": scan.id,
+        "prediction": scan.prediction,
+        "confidence": scan.confidence,
+        "image_path": scan.image_path,
+        "timestamp": scan.timestamp,
+        "gradcam": scan.gradcam_data,
+        "findings": json.loads(scan.findings) if scan.findings else [],
+        "suggestions": json.loads(scan.suggestions) if scan.suggestions else []
+    }
+
 @app.get("/api/history")
 def get_history(user_id: int, current_user: db_models.User = Depends(get_current_user), db: Session = Depends(database.get_db)):
     scans = db.query(db_models.ScanRecord).filter(db_models.ScanRecord.user_id == user_id).order_by(db_models.ScanRecord.timestamp.desc()).all()
-    return scans
+    # Decode JSON findings for history view as well
+    results = []
+    for s in scans:
+        results.append({
+            "id": s.id,
+            "prediction": s.prediction,
+            "confidence": s.confidence,
+            "image_path": s.image_path,
+            "timestamp": s.timestamp,
+            "gradcam": s.gradcam_data,
+            "findings": json.loads(s.findings) if s.findings else [],
+            "suggestions": json.loads(s.suggestions) if s.suggestions else []
+        })
+    return results
 
 # --- Vitals and Monitoring Endpoints ---
 
@@ -532,8 +572,10 @@ def get_all_patients(current_user: db_models.User = Depends(get_current_user), d
         result.append({
             "id": p.id,
             "username": p.username,
+            "full_name": p.full_name,
             "status": status,
-            "latest_vitals": latest_vitals
+            "latest_vitals": latest_vitals,
+            "current_report": p.current_report
         })
     return result
 
@@ -592,3 +634,14 @@ async def chat_proxy(payload: dict):
             return {"reply": data["content"][0]["text"], "status": "success"}
         except Exception as e:
             return {"error": str(e), "status": "failed"}
+@app.post("/api/patients/{user_id}/report")
+def update_patient_report(user_id: int, req: ReportUpdate, current_user: db_models.User = Depends(get_current_user), db: Session = Depends(database.get_db)):
+    if current_user.role != 'doctor':
+        raise HTTPException(status_code=403, detail="Not authorized")
+    patient = db.query(db_models.User).filter(db_models.User.id == user_id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    patient.current_report = req.report
+    db.commit()
+    return {"msg": "Report updated successfully"}

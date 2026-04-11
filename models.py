@@ -16,6 +16,7 @@ class User(Base):
     gender = Column(String, nullable=True)
     date_of_birth = Column(String, nullable=True)
     phone = Column(String, nullable=True)
+    current_report = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     scans = relationship("ScanRecord", back_populates="owner")
@@ -54,6 +55,9 @@ class ScanRecord(Base):
     image_path = Column(String) 
     prediction = Column(String) 
     confidence = Column(Float)  
+    gradcam_data = Column(String, nullable=True) 
+    findings = Column(String, nullable=True) # JSON encoded string
+    suggestions = Column(String, nullable=True) # JSON encoded string
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
 
     owner = relationship("User", back_populates="scans")
