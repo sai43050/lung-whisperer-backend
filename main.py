@@ -43,9 +43,9 @@ db_models.Base.metadata.create_all(bind=database.engine)
 app = FastAPI(title="Multi-Modal Lung Disease API")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
-@app.get("/health")
+@app.get("/api/health")
 def health_check():
-    return {"status": "healthy", "version": "1.0.1", "numpy": np.__version__}
+    return {"status": "healthy", "version": "1.0.2", "numpy": np.__version__}
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
     credentials_exception = HTTPException(
