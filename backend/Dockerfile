@@ -13,18 +13,17 @@ RUN pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Hard-pin numpy BEFORE installing other packages.
-# This prevents transitive dependencies (e.g. scikit-image's resolver)
-# from silently upgrading numpy to 2.x, which causes:
-#   RuntimeError: Unable to configure default ndarray.__repr__
-RUN pip install --no-cache-dir "numpy==1.26.4"
+RUN pip install --no-cache-dir "numpy==1.26.4" && \
+    python -c "import numpy; assert numpy.__version__ == '1.26.4', f'Wrong numpy version: {numpy.__version__}'"
 
 COPY requirements.txt .
-# Use --constraint to enforce numpy pin during full install
+# Use --constraint to enforce numpy pin during full install and verify after
 RUN echo "numpy==1.26.4" > /constraints.txt && \
     pip install --no-cache-dir \
     -r requirements.txt \
     -c /constraints.txt \
-    --extra-index-url https://download.pytorch.org/whl/cpu
+    --extra-index-url https://download.pytorch.org/whl/cpu && \
+    python -c "import numpy; assert numpy.__version__ == '1.26.4', f'NumPy corrupted during install: {numpy.__version__}'"
 
 COPY . .
 RUN mkdir -p uploads

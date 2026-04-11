@@ -1,3 +1,5 @@
+import numpy as np
+print(f"NumPy Version: {np.__version__}")
 import matplotlib
 matplotlib.use('Agg')
 
@@ -17,7 +19,7 @@ import torch.nn as nn
 from torchvision import models as tv_models
 from torchvision import transforms
 from PIL import Image
-import numpy as np
+# numpy already imported at top
 import torchxrayvision as xrv
 import cv2
 import base64
