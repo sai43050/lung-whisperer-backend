@@ -29,9 +29,9 @@ const safeSetItem = (key, val) => {
 };
 
 // Version Migration & Environmental Purge
-if (safeGetItem('env_rev') !== '3.0.6') {
+if (safeGetItem('env_rev') !== '4.0.5') {
   safeStorageClear();
-  safeSetItem('env_rev', '3.0.6');
+  safeSetItem('env_rev', '4.0.5');
 }
 
 // Global Canonical Redirection
