@@ -19,12 +19,17 @@ class User(Base):
     current_report = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
-    medications = relationship("Medication", back_populates="owner", cascade="all, delete-orphan")
-    
     # Smoking Tracker Fields
     quit_date = Column(DateTime, nullable=True)
     cigs_per_day = Column(Integer, default=20)
     price_per_pack = Column(Integer, default=500)
+
+    # Relationships
+    vitals = relationship("VitalsHistory", back_populates="patient", cascade="all, delete-orphan")
+    alerts = relationship("Alerts", back_populates="patient", cascade="all, delete-orphan")
+    scans = relationship("ScanRecord", back_populates="owner", cascade="all, delete-orphan")
+    medications = relationship("Medication", back_populates="owner", cascade="all, delete-orphan")
+    breathing_sessions = relationship("BreathingSession", back_populates="owner", cascade="all, delete-orphan")
 
 class VitalsHistory(Base):
     __tablename__ = "vitals_history"
@@ -77,3 +82,15 @@ class Medication(Base):
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
 
     owner = relationship("User", back_populates="medications")
+
+class BreathingSession(Base):
+    __tablename__ = "breathing_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    technique = Column(String)
+    rounds = Column(Integer)
+    duration_minutes = Column(Float)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+
+    owner = relationship("User", back_populates="breathing_sessions")

@@ -330,6 +330,11 @@ class SmokingProfileUpdate(BaseModel):
     cigs_per_day: Optional[int] = None
     price_per_pack: Optional[int] = None
 
+class BreathingSessionCreate(BaseModel):
+    technique: str
+    rounds: int
+    duration_minutes: float
+
 # -------------------------------
 
 @app.post("/api/auth/register")
@@ -726,3 +731,23 @@ def update_smoking_profile(req: SmokingProfileUpdate, current_user: db_models.Us
         
     db.commit()
     return {"msg": "Profile updated", "quit_date": current_user.quit_date}
+
+# --- Breathing Exercise Endpoints ---
+
+@app.post("/api/breathing")
+def log_breathing_session(req: BreathingSessionCreate, current_user: db_models.User = Depends(get_current_user), db: Session = Depends(database.get_db)):
+    session = db_models.BreathingSession(
+        user_id=current_user.id,
+        technique=req.technique,
+        rounds=req.rounds,
+        duration_minutes=req.duration_minutes
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+@app.get("/api/breathing/history")
+def get_breathing_history(current_user: db_models.User = Depends(get_current_user), db: Session = Depends(database.get_db)):
+    sessions = db.query(db_models.BreathingSession).filter(db_models.BreathingSession.user_id == current_user.id).all()
+    return sessions
