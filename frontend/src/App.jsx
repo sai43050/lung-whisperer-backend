@@ -22,9 +22,15 @@ function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const existingUser = getCurrentUser();
-    if (existingUser) {
-      setUser(existingUser);
+    try {
+      const existingUser = getCurrentUser();
+      if (existingUser && existingUser.username) {
+        setUser(existingUser);
+      } else {
+        localStorage.removeItem('user'); // Corrupted
+      }
+    } catch (e) {
+      setUser(null);
     }
   }, []);
 

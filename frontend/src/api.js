@@ -41,8 +41,16 @@ export const register = async (username, password, role, fullName) => {
 };
 
 export const getCurrentUser = () => {
-  const user = localStorage.getItem('user');
-  return user ? JSON.parse(user) : null;
+  try {
+    const user = localStorage.getItem('user');
+    if (!user) return null;
+    return JSON.parse(user);
+  } catch (error) {
+    console.error("Critical Auth State Failure. Purging local storage.", error);
+    localStorage.removeItem('user');
+    localStorage.removeItem('access_token');
+    return null;
+  }
 };
 
 export const logout = () => {
@@ -165,6 +173,17 @@ export const getSmokingProfile = async () => {
 
 export const updateSmokingProfile = async (profileData) => {
   const response = await api.patch('/user/smoking-profile', profileData);
+  return response.data;
+};
+
+// --- Breathing exercise APIs ---
+export const logBreathingSession = async (technique, rounds, durationMinutes) => {
+  const response = await api.post('/breathing', { technique, rounds, duration_minutes: durationMinutes });
+  return response.data;
+};
+
+export const getBreathingHistory = async () => {
+  const response = await api.get('/breathing/history');
   return response.data;
 };
 

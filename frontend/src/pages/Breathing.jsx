@@ -50,11 +50,49 @@ const Breathing = () => {
 
   const currentEx = techniques[selectedIdx];
 
+  const [history, setHistory] = useState([]);
+
   useEffect(() => {
-    let timer;
+    fetchHistory();
+  }, []);
+
+  const fetchHistory = async () => {
+    try {
+      const data = await getBreathingHistory();
+      if (Array.isArray(data)) {
+        setHistory(data);
+        const total = data.reduce((acc, s) => acc + s.duration_minutes, 0);
+        setTotalMins(total);
+        const roundCount = data.reduce((acc, s) => acc + s.rounds, 0);
+        setRound(roundCount);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const saveSession = async () => {
+    if (round > 0) {
+      try {
+        // Calculate duration for the JUST completed session
+        // We track session specific rounds and duration temporarily
+        await logBreathingSession(currentEx.name, sessionRounds, sessionMins);
+        fetchHistory(); // Refresh
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
+
+  const [sessionRounds, setSessionRounds] = useState(0);
+  const [sessionMins, setSessionMins] = useState(0);
+
+  useEffect(() => {
     let isMounted = true;
 
     if (isActive) {
+      setSessionRounds(0);
+      setSessionMins(0);
       const runExercise = async () => {
         const { inhale, hold1, exhale, hold2 } = currentEx.timing;
         
@@ -95,19 +133,19 @@ const Breathing = () => {
           }
           if (!isActive) break;
           
-          setRound(r => r + 1);
-          setTotalMins(m => m + (inhale + hold1 + exhale + hold2) / 60);
+          setSessionRounds(r => r + 1);
+          setSessionMins(m => m + (inhale + hold1 + exhale + hold2) / 60);
         }
       };
       runExercise();
     } else {
+      if (sessionRounds > 0) {
+         logBreathingSession(currentEx.name, sessionRounds, sessionMins).then(() => fetchHistory());
+      }
       setPhase('READY');
       setCount(0);
     }
-    return () => {
-      isMounted = false;
-      clearTimeout(timer);
-    };
+    return () => { isMounted = false; };
   }, [isActive, selectedIdx]);
 
   return (
@@ -192,8 +230,8 @@ const Breathing = () => {
                 <div className="grid grid-cols-3 gap-4 pt-4 border-t border-white/5">
                   {[
                     { label: 'Session Rounds', val: round, icon: RotateCcw, color: 'cyan' },
-                    { label: 'Target Mins', val: totalMins.toFixed(1), icon: Clock, color: 'violet' },
-                    { label: 'Weekly Score', val: '840', icon: TrendingUp, color: 'emerald' }
+                    { label: 'Target Mins', val: totalMins.toFixed(1), icon: Wind, color: 'violet' },
+                    { label: 'Weekly Score', val: Math.min(1000, Math.floor(totalMins * 10)).toString(), icon: TrendingUp, color: 'emerald' }
                   ].map((s, i) => (
                     <div key={i} className="text-center">
                        <div className="text-2xl font-display font-black text-white">{s.val}</div>
