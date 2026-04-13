@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Leaf, DollarSign, Heart, Clock, CheckCircle2, Trophy, TrendingUp, Zap, Flame, Calendar, Activity } from 'lucide-react';
+import { getSmokingProfile, updateSmokingProfile } from '../api';
+import { useToast } from '../components/Toast';
+import { Leaf, DollarSign, Heart, Clock, CheckCircle2, Trophy, TrendingUp, Zap, Flame, Calendar, Activity, Settings, Save, X } from 'lucide-react';
 
 const milestones = [
   { label: '20 Minutes', effect: 'Vascular stabilization. Heart rate and blood pressure drop to baseline.', icon: Clock, time: 20 / 60 / 24 },
@@ -12,22 +13,75 @@ const milestones = [
 ];
 
 const SmokingTracker = () => {
-  const [quitDate] = useState(new Date(Date.now() - 47 * 24 * 60 * 60 * 1000 - 18 * 60 * 60 * 1000));
+  const [profile, setProfile] = useState({
+    quit_date: new Date(Date.now() - 47 * 24 * 60 * 60 * 1000).toISOString(),
+    cigs_per_day: 20,
+    price_per_pack: 500
+  });
+  const [loading, setLoading] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  const { showToast } = useToast();
   const [now, setNow] = useState(new Date());
 
+  // Form states
+  const [editQuitDate, setEditQuitDate] = useState('');
+  const [editCigs, setEditCigs] = useState(20);
+  const [editPrice, setEditPrice] = useState(500);
+
   useEffect(() => {
+    fetchProfile();
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const diff = now - quitDate;
+  const fetchProfile = async () => {
+    try {
+      setLoading(true);
+      const data = await getSmokingProfile();
+      if (data.quit_date) {
+        setProfile(data);
+        setEditQuitDate(data.quit_date.split('T')[0]);
+        setEditCigs(data.cigs_per_day);
+        setEditPrice(data.price_per_pack);
+      } else {
+        // If no quit date, show settings immediately
+        setShowSettings(true);
+      }
+    } catch (err) {
+      showToast('Biological profile synchronization failed.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      const updated = await updateSmokingProfile({
+        quit_date: new Date(editQuitDate).toISOString(),
+        cigs_per_day: parseInt(editCigs),
+        price_per_pack: parseInt(editPrice)
+      });
+      setProfile({
+        quit_date: updated.quit_date,
+        cigs_per_day: parseInt(editCigs),
+        price_per_pack: parseInt(editPrice)
+      });
+      setShowSettings(false);
+      showToast('Cessation parameters updated.', 'success');
+    } catch (err) {
+      showToast('Failed to update profile.', 'error');
+    }
+  };
+
+  const quitDateObj = new Date(profile.quit_date);
+  const diff = Math.max(0, now - quitDateObj);
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
   const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
   const minutes = Math.floor((diff / (1000 * 60)) % 60);
   const seconds = Math.floor((diff / 1000) % 60);
 
-  const cigsAvoided = days * 20 + Math.floor(hours * 0.8);
-  const moneySaved = cigsAvoided * 5; 
+  const cigsAvoided = Math.floor((diff / (1000 * 60 * 60 * 24)) * profile.cigs_per_day);
+  const moneySaved = Math.floor((cigsAvoided / 20) * profile.price_per_pack); 
   const lifeSaved = (cigsAvoided * 11) / 1440; 
 
   return (
@@ -59,12 +113,77 @@ const SmokingTracker = () => {
           </div>
           
           <div className="hidden sm:flex items-center gap-4 bg-black/40 p-2 rounded-2xl border border-white/5">
-            <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-               <Trophy size={16} className="text-emerald-400" />
-               <span className="text-xs font-bold text-white uppercase tracking-tighter">Level 8 Recover</span>
-            </div>
+            <button 
+              onClick={() => setShowSettings(true)}
+              className="flex items-center gap-3 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-all group"
+            >
+               <Settings size={16} className="text-slate-400 group-hover:rotate-90 transition-transform" />
+               <span className="text-xs font-bold uppercase tracking-tighter">Adjust Profile</span>
+            </button>
           </div>
         </div>
+
+        <AnimatePresence>
+          {showSettings && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-12 glass-card p-8 rounded-[2.5rem] border-emerald-500/30 bg-emerald-500/5 relative overflow-hidden"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="text-xl font-display font-black text-white">Cessation Parameters</h3>
+                <button onClick={() => setShowSettings(false)} className="text-slate-500 hover:text-white transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[9px] font-mono font-black text-emerald-500 uppercase tracking-widest ml-1">Quit Initiation Date</label>
+                  <input 
+                    type="date" 
+                    value={editQuitDate}
+                    onChange={(e) => setEditQuitDate(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm text-white focus:border-emerald-500/40 outline-none transition-all"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[9px] font-mono font-black text-emerald-500 uppercase tracking-widest ml-1">Daily Consumption</label>
+                  <input 
+                    type="number" 
+                    placeholder="20"
+                    value={editCigs}
+                    onChange={(e) => setEditCigs(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm text-white focus:border-emerald-500/40 outline-none transition-all"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[9px] font-mono font-black text-emerald-500 uppercase tracking-widest ml-1">Cost Per Pack (₹)</label>
+                  <input 
+                    type="number" 
+                    placeholder="500"
+                    value={editPrice}
+                    onChange={(e) => setEditPrice(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm text-white focus:border-emerald-500/40 outline-none transition-all"
+                  />
+                </div>
+              </div>
+              
+              <div className="mt-8 flex justify-end">
+                <button 
+                  onClick={handleSaveProfile}
+                  className="flex items-center gap-2 px-10 py-4 bg-emerald-500 text-black font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-emerald-400 transition-all shadow-xl shadow-emerald-500/20 active:scale-95"
+                >
+                  <Save size={16} /> Synchronize Profile
+                </button>
+              </div>
+
+              {/* Shimmer line */}
+              <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500 to-transparent" />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
           

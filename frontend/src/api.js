@@ -136,4 +136,36 @@ export const sendAIChatMessage = async (message) => {
   return response.data;
 };
 
+// --- Medications APIs ---
+export const getMedications = async () => {
+  const response = await api.get('/medications');
+  return response.data;
+};
+
+export const addMedication = async (name, dosage, time) => {
+  const response = await api.post('/medications', { name, dosage, time });
+  return response.data;
+};
+
+export const toggleMedication = async (medId) => {
+  const response = await api.patch(`/medications/${medId}/toggle`);
+  return response.data;
+};
+
+export const deleteMedication = async (medId) => {
+  const response = await api.delete(`/medications/${medId}`);
+  return response.data;
+};
+
+// --- Smoking Profile APIs ---
+export const getSmokingProfile = async () => {
+  const response = await api.get('/user/smoking-profile');
+  return response.data;
+};
+
+export const updateSmokingProfile = async (profileData) => {
+  const response = await api.patch('/user/smoking-profile', profileData);
+  return response.data;
+};
+
 export default api;

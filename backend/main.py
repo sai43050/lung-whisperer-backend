@@ -317,6 +317,19 @@ class ChatMessage(BaseModel):
 class ReportUpdate(BaseModel):
     report: str
 
+class MedicationCreate(BaseModel):
+    name: str
+    dosage: str
+    time: str
+
+class MedicationUpdate(BaseModel):
+    taken: int
+
+class SmokingProfileUpdate(BaseModel):
+    quit_date: Optional[str] = None
+    cigs_per_day: Optional[int] = None
+    price_per_pack: Optional[int] = None
+
 # -------------------------------
 
 @app.post("/api/auth/register")
@@ -645,3 +658,71 @@ def update_patient_report(user_id: int, req: ReportUpdate, current_user: db_mode
     patient.current_report = req.report
     db.commit()
     return {"msg": "Report updated successfully"}
+
+# --- Medications Endpoints ---
+
+@app.get("/api/medications")
+def get_medications(current_user: db_models.User = Depends(get_current_user), db: Session = Depends(database.get_db)):
+    return db.query(db_models.Medication).filter(db_models.Medication.user_id == current_user.id).order_by(db_models.Medication.time.asc()).all()
+
+@app.post("/api/medications")
+def add_medication(req: MedicationCreate, current_user: db_models.User = Depends(get_current_user), db: Session = Depends(database.get_db)):
+    new_med = db_models.Medication(
+        user_id=current_user.id,
+        name=req.name,
+        dosage=req.dosage,
+        time=req.time,
+        taken=0
+    )
+    db.add(new_med)
+    db.commit()
+    db.refresh(new_med)
+    return new_med
+
+@app.patch("/api/medications/{med_id}/toggle")
+def toggle_medication(med_id: int, current_user: db_models.User = Depends(get_current_user), db: Session = Depends(database.get_db)):
+    med = db.query(db_models.Medication).filter(db_models.Medication.id == med_id, db_models.Medication.user_id == current_user.id).first()
+    if not med:
+        raise HTTPException(status_code=404, detail="Medication not found")
+    
+    med.taken = 1 if med.taken == 0 else 0
+    db.commit()
+    db.refresh(med)
+    return med
+
+@app.delete("/api/medications/{med_id}")
+def delete_medication(med_id: int, current_user: db_models.User = Depends(get_current_user), db: Session = Depends(database.get_db)):
+    med = db.query(db_models.Medication).filter(db_models.Medication.id == med_id, db_models.Medication.user_id == current_user.id).first()
+    if not med:
+        raise HTTPException(status_code=404, detail="Medication not found")
+    
+    db.delete(med)
+    db.commit()
+    return {"msg": "Medication deleted"}
+
+# --- Smoking Profile Endpoints ---
+
+@app.get("/api/user/smoking-profile")
+def get_smoking_profile(current_user: db_models.User = Depends(get_current_user)):
+    return {
+        "quit_date": current_user.quit_date.isoformat() if current_user.quit_date else None,
+        "cigs_per_day": current_user.cigs_per_day,
+        "price_per_pack": current_user.price_per_pack
+    }
+
+@app.patch("/api/user/smoking-profile")
+def update_smoking_profile(req: SmokingProfileUpdate, current_user: db_models.User = Depends(get_current_user), db: Session = Depends(database.get_db)):
+    if req.quit_date:
+        try:
+            current_user.quit_date = datetime.datetime.fromisoformat(req.quit_date.replace("Z", ""))
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use ISO format.")
+    
+    if req.cigs_per_day is not None:
+        current_user.cigs_per_day = req.cigs_per_day
+        
+    if req.price_per_pack is not None:
+        current_user.price_per_pack = req.price_per_pack
+        
+    db.commit()
+    return {"msg": "Profile updated", "quit_date": current_user.quit_date}

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { simulateVitals, getVitalsHistory, sendAIChatMessage } from '../api';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
-import { Heart, Activity, Wind, AlertTriangle, ShieldCheck, MessageCircle, Send, X, Zap, TrendingUp, Mic } from 'lucide-react';
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Heart, Activity, Wind, AlertTriangle, ShieldCheck, MessageCircle, Send, X, Zap, TrendingUp, Mic, Bluetooth, BluetoothConnected, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../components/Toast';
@@ -86,7 +86,10 @@ const PatientDashboard = ({ user }) => {
   const [status, setStatus] = useState('Normal');
   const [recommendation, setRecommendation] = useState('Normal condition');
   const [isSimulating, setIsSimulating] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [bluetoothDevice, setBluetoothDevice] = useState(null);
   const intervalRef = useRef(null);
+  const dataPushRef = useRef(null);
 
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([{
@@ -148,10 +151,17 @@ const PatientDashboard = ({ user }) => {
         payload = forcedValues;
       } else {
         setVitals(prev => {
-          payload = generateRandomVitals(prev);
+          // If bluetooth is active, we only randomize the non-connected ones (SpO2, RR)
+          const base = bluetoothDevice ? { ...prev } : generateRandomVitals(prev);
+          payload = bluetoothDevice ? {
+            ...base,
+            spo2: generateRandomVitals(prev).spo2,
+            respiratory_rate: generateRandomVitals(prev).respiratory_rate
+          } : base;
           return payload;
         });
       }
+      
       const res = await simulateVitals(user?.user_id || 'guest', payload.spo2, payload.respiratory_rate, payload.heart_rate);
       setStatus(res.health_status);
       setRecommendation(res.recommendation);
@@ -162,14 +172,74 @@ const PatientDashboard = ({ user }) => {
         showToast("CRITICAL ALERT: Abnormal vitals detected!", "error");
       }
     } catch (err) { 
-      console.error("Simulation error", err);
-      showToast("Vitals sync failed. Retrying...", "warning");
+      console.error("Vitals update error", err);
     }
   };
 
+  // --- Bluetooth Integration ---
+  const connectBluetooth = async () => {
+    if (!navigator.bluetooth) {
+      showToast("Bluetooth not supported in this browser.", "error");
+      return;
+    }
+
+    try {
+      setIsConnecting(true);
+      const device = await navigator.bluetooth.requestDevice({
+        filters: [{ services: ['heart_rate'] }],
+        optionalServices: ['battery_service']
+      });
+
+      device.addEventListener('gattserverdisconnected', onDisconnected);
+      const server = await device.gatt.connect();
+      const service = await server.getPrimaryService('heart_rate');
+      const characteristic = await service.getCharacteristic('heart_rate_measurement');
+
+      await characteristic.startNotifications();
+      characteristic.addEventListener('characteristicvaluechanged', handleHeartRateChanged);
+
+      setBluetoothDevice(device);
+      setIsSimulating(true); // Auto-start data flow
+      showToast(`Connected to ${device.name}. AccuVital™ Sync Active.`, "success");
+      
+      // Start regular persistence push
+      if (dataPushRef.current) clearInterval(dataPushRef.current);
+      dataPushRef.current = setInterval(() => triggerVitalsUpdate(), 10000);
+
+    } catch (error) {
+      console.error("Bluetooth Error:", error);
+      if (error.name !== 'NotFoundError') {
+         showToast("Sync command failed. Ensure device remains in range.", "error");
+      }
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleHeartRateChanged = (event) => {
+    const value = event.target.value;
+    let flags = value.getUint8(0);
+    let hrValue;
+    if (flags & 0x01) hrValue = value.getUint16(1, true);
+    else hrValue = value.getUint8(1);
+    
+    setVitals(prev => ({ ...prev, heart_rate: hrValue }));
+  };
+
+  const onDisconnected = () => {
+    setBluetoothDevice(null);
+    if (dataPushRef.current) clearInterval(dataPushRef.current);
+    showToast("Wearable disconnected. Switching to internal bio-simulation.", "warning");
+  };
+
   const toggleSimulation = () => {
-    if (isSimulating) clearInterval(intervalRef.current);
-    else intervalRef.current = setInterval(() => triggerVitalsUpdate(), 4000);
+    if (isSimulating) {
+      clearInterval(intervalRef.current);
+      if (dataPushRef.current) clearInterval(dataPushRef.current);
+      if (bluetoothDevice) bluetoothDevice.gatt.disconnect();
+    } else {
+      intervalRef.current = setInterval(() => triggerVitalsUpdate(), 4000);
+    }
     setIsSimulating(!isSimulating);
   };
 
@@ -239,13 +309,22 @@ const PatientDashboard = ({ user }) => {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={forceEmergency}
-              className="px-4 py-2 text-xs font-bold rounded-xl transition-all duration-200"
-              style={{ background: 'rgba(251,113,133,0.1)', border: '1px solid rgba(251,113,133,0.25)', color: '#fb7185' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(251,113,133,0.18)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'rgba(251,113,133,0.1)'}
+              onClick={connectBluetooth}
+              disabled={isConnecting}
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all duration-300 ${
+                bluetoothDevice 
+                  ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' 
+                  : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10'
+              }`}
             >
-              Force Event
+              {isConnecting ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : bluetoothDevice ? (
+                <BluetoothConnected size={14} />
+              ) : (
+                <Bluetooth size={14} />
+              )}
+              {bluetoothDevice ? 'Sync Active' : isConnecting ? 'Searching...' : 'Connect Wearable'}
             </button>
             <button
               onClick={toggleSimulation}
@@ -257,7 +336,7 @@ const PatientDashboard = ({ user }) => {
                 boxShadow: isSimulating ? '0 0 15px rgba(251,113,133,0.3)' : '0 0 20px rgba(6,182,212,0.35)',
               }}
             >
-              {isSimulating ? '⬛ Stop Sim' : '▶ Start Sim'}
+              {isSimulating ? '⬛ Stop Tracker' : '▶ Start Bio-Link'}
             </button>
           </div>
         </div>
@@ -409,6 +488,7 @@ const PatientDashboard = ({ user }) => {
                   <YAxis domain={chart.domain} tick={{ fontSize: 10, fill: 'rgba(148,163,184,0.5)', fontFamily: 'JetBrains Mono' }} axisLine={false} tickLine={false} width={32} />
                   <Tooltip content={<CustomTooltip color={chart.color} />} />
                   <Area type="monotone" dataKey={chart.key} stroke={chart.color} strokeWidth={2.5}
+                    isAnimationActive={false}
                     fill={`url(#grad-${chart.key})`} dot={false} activeDot={{ r: 5, fill: chart.color, strokeWidth: 0 }} />
                 </AreaChart>
               </ResponsiveContainer>

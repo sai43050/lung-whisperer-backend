@@ -19,9 +19,12 @@ class User(Base):
     current_report = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
-    scans = relationship("ScanRecord", back_populates="owner")
-    vitals = relationship("VitalsHistory", back_populates="patient", cascade="all, delete-orphan")
-    alerts = relationship("Alerts", back_populates="patient", cascade="all, delete-orphan")
+    medications = relationship("Medication", back_populates="owner", cascade="all, delete-orphan")
+    
+    # Smoking Tracker Fields
+    quit_date = Column(DateTime, nullable=True)
+    cigs_per_day = Column(Integer, default=20)
+    price_per_pack = Column(Integer, default=500)
 
 class VitalsHistory(Base):
     __tablename__ = "vitals_history"
@@ -61,3 +64,16 @@ class ScanRecord(Base):
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
 
     owner = relationship("User", back_populates="scans")
+
+class Medication(Base):
+    __tablename__ = "medications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    name = Column(String)
+    dosage = Column(String)
+    time = Column(String)
+    taken = Column(Integer, default=0) # 0 for False, 1 for True
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+
+    owner = relationship("User", back_populates="medications")

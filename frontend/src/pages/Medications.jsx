@@ -1,29 +1,62 @@
-import React, { useState } from 'react';
-import { Pill, Clock, Plus, CheckCircle2, AlertCircle, Calendar, Trash2, Zap, LayoutDashboard, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getMedications, addMedication, toggleMedication, deleteMedication } from '../api';
+import { useToast } from '../components/Toast';
 
 const Medications = () => {
-  const [meds, setMeds] = useState([
-    { id: 1, name: 'Salbutamol 100mcg', dose: '2 puffs', time: '08:00', taken: true },
-    { id: 2, name: 'Beclomethasone', dose: '1 puff', time: '20:00', taken: false }
-  ]);
+  const [meds, setMeds] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { showToast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDose, setNewDose] = useState('');
   const [newTime, setNewTime] = useState('08:00');
 
-  const toggleMed = (id) => {
-    setMeds(meds.map(m => m.id === id ? { ...m, taken: !m.taken } : m));
+  useEffect(() => {
+    fetchMeds();
+  }, []);
+
+  const fetchMeds = async () => {
+    try {
+      setLoading(true);
+      const data = await getMedications();
+      setMeds(data);
+    } catch (err) {
+      showToast('System synchronization failure. Metadata inaccessible.', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const deleteMed = (id) => {
-    setMeds(meds.filter(m => m.id !== id));
+  const toggleMed = async (id) => {
+    try {
+      const updated = await toggleMedication(id);
+      setMeds(meds.map(m => m.id === id ? updated : m));
+      showToast(`Medication ${updated.taken ? 'recorded' : 'reverted'}.`, 'success');
+    } catch (err) {
+      showToast('Toggle command rejected.', 'error');
+    }
   };
 
-  const addMed = () => {
+  const deleteMed = async (id) => {
+    try {
+      await deleteMedication(id);
+      setMeds(meds.filter(m => m.id !== id));
+      showToast('Entry purged from timeline.', 'warning');
+    } catch (err) {
+      showToast('Erase command failed.', 'error');
+    }
+  };
+
+  const addMed = async () => {
     if (!newName) return;
-    setMeds([...meds, { id: Date.now(), name: newName, dose: newDose, time: newTime, taken: false }]);
-    setNewName(''); setNewDose(''); setShowAdd(false);
+    try {
+      const added = await addMedication(newName, newDose, newTime);
+      setMeds([...meds, added]);
+      setNewName(''); setNewDose(''); setShowAdd(false);
+      showToast('New composition synchronized.', 'success');
+    } catch (err) {
+      showToast('Failed to create reminder.', 'error');
+    }
   };
 
   const adherence = Math.round((meds.filter(m => m.taken).length / meds.length) * 100) || 0;
@@ -126,51 +159,58 @@ const Medications = () => {
             </AnimatePresence>
 
             <div className="space-y-5">
-              <AnimatePresence>
-                {meds.map((med, i) => (
-                  <motion.div 
-                    key={med.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.1 }}
-                    className={`glass-card p-6 rounded-[2rem] border-white/10 flex items-center gap-6 group transition-all relative overflow-hidden ${med.taken ? 'opacity-40 grayscale-[0.5]' : 'hover:border-violet-500/40 hover:bg-white/5'}`}
-                  >
-                    {/* Status accent */}
-                    <div className={`absolute left-0 top-0 bottom-0 w-1 ${med.taken ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+              {loading ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                  <div className="w-10 h-10 border-4 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
+                  <span className="text-[10px] font-mono font-black text-slate-500 uppercase tracking-widest">Synchronizing Encrypted Data...</span>
+                </div>
+              ) : (
+                <AnimatePresence>
+                  {meds.map((med, i) => (
+                    <motion.div 
+                      key={med.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.1 }}
+                      className={`glass-card p-6 rounded-[2rem] border-white/10 flex items-center gap-6 group transition-all relative overflow-hidden ${med.taken ? 'opacity-40 grayscale-[0.5]' : 'hover:border-violet-500/40 hover:bg-white/5'}`}
+                    >
+                      {/* Status accent */}
+                      <div className={`absolute left-0 top-0 bottom-0 w-1 ${med.taken ? 'bg-emerald-500' : 'bg-rose-500'}`} />
 
-                    <div className={`p-5 rounded-2xl transition-all duration-700 ${med.taken ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 text-rose-400 shadow-[0_0_20px_rgba(251,113,133,0.1)] group-hover:bg-rose-500 group-hover:text-white transition-all group-hover:scale-105'}`}>
-                      <Pill size={24} />
-                    </div>
-                    <div className="flex-grow">
-                       <div className="flex items-center gap-3 mb-1">
-                          <h4 className={`text-xl font-display font-black tracking-tight ${med.taken ? 'text-slate-400' : 'text-white'}`}>{med.name}</h4>
-                          {med.taken && <CheckCircle2 size={16} className="text-emerald-500" />}
-                       </div>
-                       <div className="flex items-center gap-3">
-                          <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest px-2 py-0.5 rounded-lg bg-black/40 border border-white/5">{med.dose}</span>
-                          <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5"><Clock size={12} className="text-slate-600" /> {med.time}</span>
-                       </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <button 
-                        onClick={() => toggleMed(med.id)}
-                        className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl active:scale-95 ${
-                          med.taken 
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 shadow-none' 
-                            : 'bg-white text-black hover:bg-slate-200 shadow-white/10'
-                        }`}
-                      >
-                        {med.taken ? 'Recorded' : 'Signal Taken'}
-                      </button>
-                      <button onClick={() => deleteMed(med.id)} className="p-2.5 rounded-xl bg-white/5 border border-transparent hover:border-rose-500/30 hover:text-rose-400 transition-all opacity-0 group-hover:opacity-100">
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+                      <div className={`p-5 rounded-2xl transition-all duration-700 ${med.taken ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 text-rose-400 shadow-[0_0_20px_rgba(251,113,133,0.1)] group-hover:bg-rose-500 group-hover:text-white transition-all group-hover:scale-105'}`}>
+                        <Pill size={24} />
+                      </div>
+                      <div className="flex-grow">
+                         <div className="flex items-center gap-3 mb-1">
+                            <h4 className={`text-xl font-display font-black tracking-tight ${med.taken ? 'text-slate-400' : 'text-white'}`}>{med.name}</h4>
+                            {med.taken && <CheckCircle2 size={16} className="text-emerald-500" />}
+                         </div>
+                         <div className="flex items-center gap-3">
+                            <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest px-2 py-0.5 rounded-lg bg-black/40 border border-white/5">{med.dose || med.dosage}</span>
+                            <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5"><Clock size={12} className="text-slate-600" /> {med.time}</span>
+                         </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <button 
+                          onClick={() => toggleMed(med.id)}
+                          className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl active:scale-95 ${
+                            med.taken 
+                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 shadow-none' 
+                              : 'bg-white text-black hover:bg-slate-200 shadow-white/10'
+                          }`}
+                        >
+                          {med.taken ? 'Recorded' : 'Signal Taken'}
+                        </button>
+                        <button onClick={() => deleteMed(med.id)} className="p-2.5 rounded-xl bg-white/5 border border-transparent hover:border-rose-500/30 hover:text-rose-400 transition-all opacity-0 group-hover:opacity-100">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              )}
               
-              {meds.length === 0 && (
+              {!loading && meds.length === 0 && (
                 <div className="text-center py-20 bg-black/20 rounded-[3rem] border border-white/5 border-dashed">
                    <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-6">
                       <LayoutDashboard className="text-slate-700" size={32} />
@@ -179,7 +219,7 @@ const Medications = () => {
                    <p className="text-slate-600 text-xs font-light">No medications synchronized for today.</p>
                 </div>
               )}
-            </div>
+</div>
           </div>
 
           <div className="lg:col-span-4 space-y-6">
