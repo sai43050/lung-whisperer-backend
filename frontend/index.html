@@ -2,6 +2,35 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // --- CRITICAL SYSTEM EXORCISM ---
+      (function() {
+        const CANONICAL = 'lungwhisperer.netlify.app';
+        // 1. Force Canonical Redirection
+        if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== CANONICAL) {
+          window.location.replace('https://' + CANONICAL + window.location.pathname + window.location.search);
+        }
+        // 2. Kill Stale Service Workers
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(regs => {
+            for (let reg of regs) reg.unregister();
+          });
+        }
+        // 3. Clear Poisoned Caches
+        if ('caches' in window) {
+          caches.keys().then(names => {
+            for (let name of names) caches.delete(name);
+          });
+        }
+        // 4. Reset Local State on Domain Fault or Version Shift
+        if (localStorage.getItem('sys_rev') !== '4.0.2') {
+          localStorage.clear();
+          sessionStorage.clear();
+          localStorage.setItem('sys_rev', '4.0.2');
+          console.warn("Environmental Purge Complete. Rebooting...");
+        }
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
