@@ -11,6 +11,19 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Emergency mount detection
+      setTimeout(() => {
+        const root = document.getElementById('root');
+        if (root && root.innerHTML === "") {
+          console.warn("React mount failure detected. Clearing cache and rebooting...");
+          localStorage.clear();
+          if (!window.location.search.includes('retry=1')) {
+            window.location.href = window.location.pathname + "?retry=1";
+          }
+        }
+      }, 3500);
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

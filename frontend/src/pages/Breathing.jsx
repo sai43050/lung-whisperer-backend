@@ -50,7 +50,6 @@ const Breathing = () => {
   const [totalMins, setTotalMins] = useState(0);
 
   const currentEx = techniques[selectedIdx];
-
   const [history, setHistory] = useState([]);
 
   useEffect(() => {
@@ -59,29 +58,16 @@ const Breathing = () => {
 
   const fetchHistory = async () => {
     try {
-      const data = await getBreathingHistory();
-      if (Array.isArray(data)) {
-        setHistory(data);
-        const total = data.reduce((acc, s) => acc + s.duration_minutes, 0);
+      const resp = await getBreathingHistory();
+      if (Array.isArray(resp)) {
+        setHistory(resp);
+        const total = resp.reduce((acc, s) => acc + s.duration_minutes, 0);
         setTotalMins(total);
-        const roundCount = data.reduce((acc, s) => acc + s.rounds, 0);
+        const roundCount = resp.reduce((acc, s) => acc + s.rounds, 0);
         setRound(roundCount);
       }
     } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const saveSession = async () => {
-    if (round > 0) {
-      try {
-        // Calculate duration for the JUST completed session
-        // We track session specific rounds and duration temporarily
-        await logBreathingSession(currentEx.name, sessionRounds, sessionMins);
-        fetchHistory(); // Refresh
-      } catch (e) {
-        console.error(e);
-      }
+      console.error("Historical Sync Failure:", e);
     }
   };
 
