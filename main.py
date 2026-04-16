@@ -622,8 +622,9 @@ def get_all_patients(current_user: db_models.User = Depends(get_current_user), d
 
 @app.get("/api/ai/report/{user_id}")
 def generate_ai_report(user_id: int, current_user: db_models.User = Depends(get_current_user), db: Session = Depends(database.get_db)):
-    if current_user.role != 'doctor':
-        raise HTTPException(status_code=403, detail="Only doctors can generate clinic reports")
+    # Security: Allow doctors full access, patients can only generate for themselves
+    if current_user.role != 'doctor' and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Security Violation: You can only generate diagnostic reports for your own profile.")
         
     patient = db.query(db_models.User).filter(db_models.User.id == user_id).first()
     if not patient:
