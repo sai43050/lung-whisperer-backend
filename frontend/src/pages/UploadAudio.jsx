@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UploadCloud, CheckCircle, AlertCircle, Loader2, Mic, Activity, Headphones, Sparkles, Square, Volume2 } from 'lucide-react';
+import { UploadCloud, CheckCircle, AlertCircle, Loader2, Mic, Activity, Headphones, Sparkles, Square, Volume2, Zap, ShieldCheck } from 'lucide-react';
 import { predictAudio } from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '../components/Toast';
