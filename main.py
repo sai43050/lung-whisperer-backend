@@ -503,6 +503,13 @@ def get_scan_result(scan_id: int, current_user: db_models.User = Depends(get_cur
 
 @app.get("/api/history")
 def get_history(user_id: int, current_user: db_models.User = Depends(get_current_user), db: Session = Depends(database.get_db)):
+    # Security: Verify that user is requesting their own records OR is a doctor
+    if current_user.id != user_id and current_user.role != 'doctor':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access Denied: You cannot view diagnostic records that do not belong to you."
+        )
+        
     scans = db.query(db_models.ScanRecord).filter(db_models.ScanRecord.user_id == user_id).order_by(db_models.ScanRecord.timestamp.desc()).all()
     # Decode JSON findings for history view as well
     results = []
