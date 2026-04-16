@@ -186,26 +186,50 @@ export default function Results() {
             </div>
 
             {result.gradcam ? (
-              <div className="relative rounded-3xl overflow-hidden border border-white/10 bg-slate-900 shadow-2xl group">
-                <img
-                  src={result.gradcam}
-                  alt="GradCAM Heatmap"
-                  className="w-full object-contain transition-transform duration-1000 group-hover:scale-110"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-transparent to-transparent opacity-80" />
+              <div className="relative rounded-3xl overflow-hidden border border-white/10 bg-[#020617] shadow-2xl group flex flex-col items-center justify-center p-6">
                 
-                {/* HUD Overlay */}
-                <div className="absolute inset-0 pointer-events-none border-[1.5rem] border-transparent p-4 hidden md:block">
-                   <div className="w-12 h-12 border-t-2 border-l-2 border-cyan-500/50 absolute top-0 left-0" />
-                   <div className="w-12 h-12 border-t-2 border-r-2 border-cyan-500/50 absolute top-0 right-0" />
-                   <div className="w-12 h-12 border-b-2 border-l-2 border-cyan-500/50 absolute bottom-0 left-0" />
-                   <div className="w-12 h-12 border-b-2 border-r-2 border-cyan-500/50 absolute bottom-0 right-0" />
+                {/* Simulated Medical Grid Background */}
+                <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '24px 24px' }} />
+                
+                {/* Advanced Scanner HUD Container */}
+                <div className="relative inline-block overflow-hidden rounded-2xl border border-cyan-500/30 shadow-[0_0_40px_rgba(6,182,212,0.15)] max-h-[600px] bg-black">
+                  <img
+                    src={result.gradcam}
+                    alt="GradCAM Heatmap"
+                    className="w-full h-full object-contain relative z-10"
+                  />
+                  
+                  {/* Scanning Laser Animation */}
+                  <motion.div 
+                    animate={{ top: ['0%', '100%', '0%'] }} 
+                    transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
+                    className="absolute left-0 right-0 h-0.5 bg-cyan-400 z-20 shadow-[0_0_15px_#22d3ee]" 
+                  />
+                  
+                  {/* Corner Target Markers */}
+                  <div className="absolute inset-2 pointer-events-none z-30">
+                     <div className="w-10 h-10 border-t-2 border-l-2 border-cyan-400 absolute top-0 left-0" />
+                     <div className="w-10 h-10 border-t-2 border-r-2 border-cyan-400 absolute top-0 right-0" />
+                     <div className="w-10 h-10 border-b-2 border-l-2 border-cyan-400 absolute bottom-0 left-0" />
+                     <div className="w-10 h-10 border-b-2 border-r-2 border-cyan-400 absolute bottom-0 right-0" />
+                  </div>
+                  
+                  {/* Heatmap Legend */}
+                  <div className="absolute bottom-4 right-4 flex flex-col gap-1 items-end bg-black/80 backdrop-blur-md p-3 rounded-xl border border-white/10 z-30">
+                     <div className="text-[9px] font-mono font-bold text-white uppercase tracking-widest">GradCAM Intensity</div>
+                     <div className="w-36 h-2 rounded-full mt-1" style={{ background: 'linear-gradient(90deg, rgba(0,0,255,0.5), rgba(0,255,255,0.8), rgba(255,255,0,0.9), rgba(255,0,0,1))' }} />
+                     <div className="w-full flex justify-between text-[7px] font-mono text-slate-400 mt-1">
+                       <span>LOW (0.0)</span><span>HIGH (1.0)</span>
+                     </div>
+                  </div>
                 </div>
 
-                <div className="absolute bottom-8 left-8 right-8">
-                  <div className="bg-black/60 backdrop-blur-md p-4 rounded-2xl border border-white/10">
-                     <p className="text-white text-xs leading-relaxed font-light opacity-90 italic">
-                        "Grad-CAM (Gradient-weighted Class Activation Mapping) highlights high-impact regions utilized by the neural network for diagnostic weight."
+                <div className="w-full mt-6 relative z-10">
+                  <div className="bg-cyan-500/10 backdrop-blur-md p-4 rounded-2xl border border-cyan-500/20 flex gap-3 items-start">
+                     <Activity className="text-cyan-400 shrink-0 mt-0.5" size={16} />
+                     <p className="text-cyan-100 text-xs leading-relaxed font-light opacity-90">
+                        <strong className="text-cyan-400 font-bold uppercase tracking-wider block mb-1">Targeted Activation Map</strong>
+                        The heat signature directly correlates with the highest predicted pathology index. Warmer regions (red/yellow) indicate focal points heavily weighted by the deep neural network during its decision matrix.
                      </p>
                   </div>
                 </div>

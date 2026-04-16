@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UploadCloud, CheckCircle, AlertCircle, Loader2, Mic, Activity, Headphones, Sparkles } from 'lucide-react';
+import { UploadCloud, CheckCircle, AlertCircle, Loader2, Mic, Activity, Headphones, Sparkles, Square, Volume2 } from 'lucide-react';
 import { predictAudio } from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '../components/Toast';
@@ -9,8 +9,65 @@ export default function UploadAudio({ user }) {
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const timerRef = useRef(null);
+
   const { showToast } = useToast();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    return () => clearInterval(timerRef.current);
+  }, []);
+
+  const formatTime = (secs) => {
+    const m = Math.floor(secs / 60).toString().padStart(2, '0');
+    const s = (secs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+
+      mediaRecorderRef.current.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      mediaRecorderRef.current.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const audioFile = new File([audioBlob], `Live_Cough_Recording.webm`, { type: 'audio/webm' });
+        setFile(audioFile);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+      setError(null);
+      setRecordingTime(0);
+      
+      timerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+      
+    } catch (err) {
+      setError("Microphone access denied or unavailable.");
+      showToast("Could not access microphone.", "error");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      clearInterval(timerRef.current);
+    }
+  };
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
@@ -119,26 +176,57 @@ export default function UploadAudio({ user }) {
 
           {!file ? (
             <div className="py-20 flex flex-col items-center relative z-10">
-              <div className="p-6 bg-slate-900 rounded-[2rem] mb-6 border border-white/5 shadow-2xl relative">
-                <div className="absolute inset-0 bg-clinical/20 blur-xl rounded-full animate-pulse" />
-                <Mic className="h-12 w-12 text-clinical relative z-10" />
-              </div>
-              <h3 className="text-2xl font-display font-bold text-white mb-2 uppercase tracking-tight">Upload Audio Feed</h3>
-              <p className="text-slate-500 text-sm mb-8 font-medium">Record or drop clinical cough audio (.wav, .ogg)</p>
-              
-              <label className="btn-primary cursor-pointer inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest px-8">
-                <Headphones size={18} />
-                Open Media Hub
-                <input type="file" className="hidden" accept="audio/*,.ogg" onChange={handleFileChange} />
-              </label>
-              
-              <div className="mt-10 flex gap-6 text-[10px] font-mono text-slate-600 uppercase tracking-[0.25em]">
-                {['HI-RES', 'STEREO', 'RAW'].map(f => (
-                  <span key={f} className="flex items-center gap-1.5">
-                    <div className="w-1 h-1 rounded-full bg-slate-700" /> {f}
-                  </span>
-                ))}
-              </div>
+              {isRecording ? (
+                <div className="flex flex-col items-center justify-center">
+                  <div className="relative w-24 h-24 flex items-center justify-center mb-6">
+                    <div className="absolute inset-0 bg-rose-500/20 rounded-full animate-ping" />
+                    <div className="absolute inset-2 bg-rose-500/40 rounded-full animate-pulse" />
+                    <Volume2 className="h-10 w-10 text-rose-500 relative z-10 animate-bounce" />
+                  </div>
+                  <h3 className="text-3xl font-display font-black text-rose-500 mb-2 tracking-tight">RECORDING</h3>
+                  <div className="text-4xl font-mono text-white mb-8 tracking-widest">{formatTime(recordingTime)}</div>
+                  
+                  <button 
+                    onClick={stopRecording}
+                    className="flex items-center gap-2 px-8 py-4 bg-rose-500 hover:bg-rose-600 text-white rounded-full font-bold text-sm tracking-widest uppercase transition-all shadow-[0_0_30px_rgba(244,63,94,0.4)] hover:scale-105"
+                  >
+                    <Square size={16} fill="currentColor" /> Stop Recording
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="p-6 bg-slate-900 rounded-[2rem] mb-6 border border-white/5 shadow-2xl relative">
+                    <div className="absolute inset-0 bg-clinical/20 blur-xl rounded-full animate-pulse" />
+                    <Mic className="h-12 w-12 text-clinical relative z-10" />
+                  </div>
+                  <h3 className="text-2xl font-display font-bold text-white mb-2 uppercase tracking-tight">Upload or Record</h3>
+                  <p className="text-slate-500 text-sm mb-8 font-medium">Capture a real-time cough sample or drop a clinical audio file</p>
+                  
+                  <div className="flex flex-col sm:flex-row gap-4 items-center mb-8">
+                    <button 
+                      onClick={startRecording}
+                      className="btn-primary flex items-center gap-2 text-[12px] font-bold uppercase tracking-widest px-8 py-3"
+                      style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}
+                    >
+                      <Mic size={18} /> Live Record
+                    </button>
+                    <span className="text-slate-600 font-mono text-xs uppercase">OR</span>
+                    <label className="cursor-pointer inline-flex items-center gap-2 text-[12px] font-bold uppercase tracking-widest px-8 py-3 rounded-xl border border-white/10 hover:bg-white/5 text-white transition-all">
+                      <Headphones size={18} className="text-violet-400" />
+                      Browse Files
+                      <input type="file" className="hidden" accept="audio/*,.ogg" onChange={handleFileChange} />
+                    </label>
+                  </div>
+                  
+                  <div className="mt-4 flex gap-6 text-[10px] font-mono text-slate-600 uppercase tracking-[0.25em]">
+                    {['HI-RES', 'STEREO', 'RAW DSP'].map(f => (
+                      <span key={f} className="flex items-center gap-1.5">
+                        <div className="w-1 h-1 rounded-full bg-slate-700" /> {f}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <motion.div 

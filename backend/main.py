@@ -14,6 +14,7 @@ import database
 import os
 import shutil
 import io
+import math
 import torch
 import torch.nn as nn
 from torchvision import models as tv_models
@@ -162,52 +163,51 @@ def predict_real_image(image_bytes: bytes, filename: str = "") -> dict:
     # Analyze raw clinical pathologies. Indices are matched against model.pathologies
     pathologies = model.pathologies
     
-    # Our dashboard maps 5 specific categories: 
-    # Normal | Bacterial Pneumonia | Viral Pneumonia | COVID-19 | Tuberculosis
-    # TorchXRayVision detects pathologies like: Pneumonia, Consolidation, Effusion, Infiltration
+    scores = outputs.cpu().numpy()
     
-    pneumonia_idx = pathologies.index("Pneumonia") if "Pneumonia" in pathologies else -1
-    consolidation_idx = pathologies.index("Consolidation") if "Consolidation" in pathologies else -1
-    effusion_idx = pathologies.index("Effusion") if "Effusion" in pathologies else -1
+    detected_abnormalities = []
+    max_score = 0
+    max_idx = None
     
-    # We build an aggregation metric from these scores to map to our 5 clinical classes
-    pneu_score = outputs[pneumonia_idx].item() if pneumonia_idx >= 0 else 0
-    cons_score = outputs[consolidation_idx].item() if consolidation_idx >= 0 else 0
-    effusion_score = outputs[effusion_idx].item() if effusion_idx >= 0 else 0
+    for i, path in enumerate(pathologies):
+        score = float(scores[i])
+        if math.isnan(score):
+            score = 0.0
+        if score > max_score:
+            max_score = score
+            max_idx = i
+        if score > 0.5: # Configurable clinical threshold
+             detected_abnormalities.append((path, score))
+             
+    detected_abnormalities.sort(key=lambda x: x[1], reverse=True)
     
-    max_score = max(pneu_score, cons_score, effusion_score)
-    final_pred = "Normal"
-    confidence = (1 - max_score) * 100 # High confidence it's normal if everything is 0
-    
-    if max_score > 0.5:
-        # Abnormality detected
+    if len(detected_abnormalities) == 0 or max_score <= 0.5:
+        final_pred = "Normal / Healthy"
+        confidence = (1 - max_score) * 100 if max_score < 1 else 99.0
+        findings = ["Clear lung fields", "No dense opacities detected", "Normal cardiac silhouette", "Costophrenic angles sharp"]
+        suggestions = ["Routine annual screening", "Maintain healthy habits"]
+        target_idx = None
+    else:
+        top_pathology = detected_abnormalities[0][0]
+        final_pred = f"Detected: {top_pathology}"
         confidence = max_score * 100
-        # Differentiate based on filename metadata for specific variant if provided for testing
-        fn = filename.lower()
-        if "covid" in fn or "19" in fn:
-            final_pred = "COVID-19"
-        elif "tb" in fn or "tuber" in fn or "myco" in fn:
-            final_pred = "Tuberculosis"
-        elif cons_score > pneu_score and cons_score > 0.6:
-            final_pred = "Bacterial Pneumonia" # Typically denser
-        else:
-            final_pred = "Viral Pneumonia" # Interstitial
-            
+        target_idx = max_idx
+        
+        findings = [f"{path} signature detected ({score*100:.1f}%)" for path, score in detected_abnormalities[:4]]
+        suggestions = [f"Immediate clinical correlation for {top_pathology}", "Consider high-resolution CT scan", "Monitor SpO2 tracking closely"]
+
     # Guarantee bounded confidence [0, 100]
     confidence = min(max(confidence, 0.0), 100.0)
     
-    # Generate Heatmap (target whichever pathology scored highest, or general Pneumonia)
-    target_idx = pneumonia_idx if max_score > 0.5 else None
+    # Generate Heatmap specifically targeting the highest scoring pathological feature
     heatmap_b64 = generate_gradcam_b64(model, tensor, target_idx)
     
-    report = get_clinical_report(final_pred)
-
     return {
         "prediction": final_pred,
         "confidence": round(confidence, 1),
         "gradcam": heatmap_b64,
-        "findings": report["findings"],
-        "suggestions": report["suggestions"]
+        "findings": findings,
+        "suggestions": suggestions
     }
 
 # ----- Audio Deep Learning Setup -----
@@ -279,9 +279,23 @@ def predict_real_audio(file_path: str) -> dict:
             probs_accum /= len(audio_ensemble)
             confidence, predicted = torch.max(probs_accum, 0)
             
+            # Map all probabilities to find acoustic signatures
+            all_probs = probs_accum.cpu().numpy()
+            acoustic_signatures = []
+            for i, cls in enumerate(audio_classes):
+                acoustic_signatures.append((cls, float(all_probs[i])))
+            acoustic_signatures.sort(key=lambda x: x[1], reverse=True)
+            
+            findings = [f"Acoustic match for {cls}: {score*100:.1f}%" for cls, score in acoustic_signatures]
+            suggestions = ["Consult a physician if symptomatic"]
+            if acoustic_signatures[0][0] != "healthy" and acoustic_signatures[0][1] > 0.5:
+                suggestions = [f"High match for {acoustic_signatures[0][0]} pattern", "Advise clinical evaluation", "Keep taking regular SpO2 readings"]
+
         return {
             "prediction": audio_classes[predicted.item()],
-            "confidence": round(confidence.item() * 100, 1)
+            "confidence": round(confidence.item() * 100, 1),
+            "findings": findings,
+            "suggestions": suggestions
         }
     except Exception as e:
         print("Audio Inference Error:", e)
