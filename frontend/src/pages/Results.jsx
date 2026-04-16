@@ -326,7 +326,7 @@ export default function Results() {
                </div>
                <div className="flex items-center gap-2">
                   <Activity size={14} className="text-cyan-500" />
-                  <span className="text-[9px] font-mono text-slate-600 uppercase">Core v2.4</span>
+                  <span className="text-[9px] font-mono text-slate-600 uppercase">Advanced System v4.1</span>
                </div>
             </div>
           </motion.div>

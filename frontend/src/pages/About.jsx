@@ -64,10 +64,7 @@ export default function About() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-40 bg-cyan-500/10 blur-[100px] rounded-full pointer-events-none group-hover:bg-cyan-500/20 transition-all duration-1000" />
         
         <div className="relative z-10">
-          <div className="inline-flex items-center gap-3 bg-white/5 border border-white/10 px-6 py-2.5 rounded-full mb-8 shadow-2xl">
-            <Activity size={20} className="text-cyan-400 animate-pulse" />
-            <span className="text-white font-black text-xs uppercase tracking-[0.3em]">Neural Protocol v2.4</span>
-          </div>
+            <span className="text-white font-black text-xs uppercase tracking-[0.3em]">Neural Protocol v4.1 (Advanced)</span>
 
           <h1 className="text-5xl md:text-7xl font-display font-black text-white mb-6 tracking-tight leading-none">
             Digital <span className="text-gradient-cyan">Respiratory</span> AI
