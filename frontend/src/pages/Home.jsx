@@ -70,7 +70,7 @@ export default function Home({ user }) {
           </motion.div>
 
           {/* Headline */}
-          <h1 className="text-7xl md:text-9xl lg:text-[10rem] font-display font-black text-white mb-6 tracking-tighter leading-[0.85]">
+          <h1 className="text-[clamp(2.5rem,10vw,8rem)] md:text-[clamp(4rem,12vw,9rem)] font-display font-black text-white mb-6 tracking-tighter leading-[0.85] w-full max-w-full px-2" style={{ wordBreak: 'keep-all' }}>
             {user ? (
               <>
                 <span className="text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-500">PROACTIVE</span> <br />

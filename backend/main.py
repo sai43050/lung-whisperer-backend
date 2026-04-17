@@ -410,7 +410,7 @@ async def predict_scan(
 ):
     user = db.query(db_models.User).filter(db_models.User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=401, detail="User session expired. Please log in again.")
 
     file_path = os.path.join(UPLOAD_DIR, file.filename)
     image_bytes = await file.read()
