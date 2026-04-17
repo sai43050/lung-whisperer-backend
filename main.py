@@ -414,6 +414,44 @@ async def predict_scan(
 
     file_path = os.path.join(UPLOAD_DIR, file.filename)
     image_bytes = await file.read()
+    
+    try:
+        from PIL import Image
+        import numpy as np
+        import io
+        img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+        arr = np.array(img)
+        diff_rg = np.mean(np.abs(arr[:,:,0].astype(int) - arr[:,:,1].astype(int)))
+        diff_rb = np.mean(np.abs(arr[:,:,0].astype(int) - arr[:,:,2].astype(int)))
+        if diff_rg > 5.0 or diff_rb > 5.0:
+            raise HTTPException(status_code=400, detail="Image appears to be in color. Please upload a valid grayscale Chest X-ray.")
+            
+        std_dev = np.std(arr)
+        if std_dev < 10.0:
+            raise HTTPException(status_code=400, detail="Image lacks sufficient structural contrast to be a valid X-ray.")
+            
+        # Check 3: Chest X-ray specific structural profile
+        gray_arr = np.mean(arr, axis=2)
+        gray_small = np.array(Image.fromarray(gray_arr).resize((100, 100)))
+        
+        left_lung = np.mean(gray_small[20:80, 15:35])
+        center = np.mean(gray_small[20:80, 40:60])
+        right_lung = np.mean(gray_small[20:80, 65:85])
+        
+        if center <= left_lung * 1.05 or center <= right_lung * 1.05:
+            raise HTTPException(status_code=400, detail="Image rejected. Missing typical radiopaque spine and radiolucent lung fields. Not a Chest X-Ray.")
+            
+        top_left = np.mean(gray_small[:20, :20])
+        top_right = np.mean(gray_small[:20, 80:])
+        
+        if top_left > 150 or top_right > 150:
+            raise HTTPException(status_code=400, detail="Image rejected. Corners are abnormally bright for a standard Chest X-Ray.")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Heuristic validation error:", e)
+        
     with open(file_path, "wb") as buffer:
         buffer.write(image_bytes)
     
