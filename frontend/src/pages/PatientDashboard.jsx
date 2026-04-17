@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { simulateVitals, getVitalsHistory, sendAIChatMessage } from '../api';
+import { simulateVitals, getVitalsHistory, sendAIChatMessage, generateMedicalReport } from '../api';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { ShieldCheck, AlertTriangle, Activity, Heart, Wind, Zap, Mic, Bluetooth, BluetoothConnected, Loader2, MessageSquare, X, Send } from 'lucide-react';
+import { ShieldCheck, AlertTriangle, Activity, Heart, Wind, Zap, Mic, Bluetooth, BluetoothConnected, Loader2, MessageSquare, X, Send, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../components/Toast';
@@ -89,6 +89,7 @@ const PatientDashboard = ({ user }) => {
     { role: 'ai', text: 'Hello! I am RespiraBot. I am securely connected to your live telemetry. How can I assist you today?' }
   ]);
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [isReportLoading, setIsReportLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
   const intervalRef = useRef(null);
@@ -183,6 +184,29 @@ const PatientDashboard = ({ user }) => {
     }
   };
 
+  const handleGenerateReport = async () => {
+    if (!user?.user_id) return;
+    setIsReportLoading(true);
+    try {
+      const data = await generateMedicalReport(user.user_id);
+      showToast("AI Report Generated. Preparing download...", "success");
+      // Use Blob to trigger dummy download of the report
+      const blob = new Blob([data.report || data], { type: 'text/markdown' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = 'Medical_Report.md';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      showToast("Failed to generate report.", "error");
+    } finally {
+      setIsReportLoading(false);
+    }
+  };
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
@@ -243,6 +267,14 @@ const PatientDashboard = ({ user }) => {
               >
                 {isConnecting ? <Loader2 className="w-3 h-3 animate-spin"/> : (bluetoothDevice ? <BluetoothConnected className="w-3 h-3"/> : <Bluetooth className="w-3 h-3"/>)}
                 {bluetoothDevice ? 'Coupled' : 'Sync Hardware'}
+              </button>
+              <button 
+                onClick={handleGenerateReport}
+                disabled={isReportLoading}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[10px] font-bold uppercase tracking-widest hover:bg-cyan-500/20 transition-colors disabled:opacity-50"
+              >
+                {isReportLoading ? <Loader2 className="w-3 h-3 animate-spin"/> : <FileText className="w-3 h-3"/>}
+                Generate AI Report
               </button>
             </div>
           </div>
