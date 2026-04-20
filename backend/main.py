@@ -488,9 +488,10 @@ async def predict_scan(
     try:
         if mode == "neural" and image_ensemble:
             result = predict_real_image(image_bytes, file.filename)
+            actual_engine = "neural"
         else:
-            # Explicitly use high-speed heuristic
             result = predict_heuristic(image_bytes)
+            actual_engine = "heuristic"
         
         scan_record = db_models.ScanRecord(
             user_id=user.id,
@@ -515,21 +516,41 @@ async def predict_scan(
             "gradcam": result.get("gradcam", ""),
             "findings": result.get("findings", []),
             "suggestions": result.get("suggestions", []),
-            "engine": "neural" if (mode == "neural" and image_ensemble) else "heuristic"
+            "engine": actual_engine
         }
     except Exception as e:
-        print(f"CRITICAL: Diagnostic Engine Failure. Rescuing with Heuristic: {e}")
+        print(f"CRITICAL: Diagnostic Engine Failure (mode={mode}). Executing Panic Rescue: {e}")
         db.rollback()
-        # Panic Fallback to Heuristic regardless of requested mode
-        result = predict_heuristic(image_bytes)
-        return {
-            "prediction": result['prediction'],
-            "confidence": result['confidence'],
-            "findings": result['findings'],
-            "suggestions": result['suggestions'],
-            "gradcam": "",
-            "engine": "heuristic_fallback"
-        }
+        # Panic Fallback: run heuristic and PERSIST the result so the frontend gets a valid ID
+        try:
+            result = predict_heuristic(image_bytes)
+            scan_record = db_models.ScanRecord(
+                user_id=user.id,
+                image_path=file_path,
+                prediction=f"{result['prediction']}",
+                confidence=result['confidence'],
+                gradcam_data="",
+                findings=json.dumps(result.get("findings", [])),
+                suggestions=json.dumps(result.get("suggestions", []))
+            )
+            db.add(scan_record)
+            db.commit()
+            db.refresh(scan_record)
+            return {
+                "id": scan_record.id,
+                "prediction": scan_record.prediction,
+                "confidence": scan_record.confidence,
+                "image_path": scan_record.image_path,
+                "timestamp": scan_record.timestamp,
+                "modality": "image",
+                "gradcam": "",
+                "findings": result.get("findings", []),
+                "suggestions": result.get("suggestions", []),
+                "engine": "heuristic_fallback"
+            }
+        except Exception as rescue_err:
+            print(f"DOUBLE FAULT: Panic Rescue also failed: {rescue_err}")
+            raise HTTPException(status_code=500, detail="Diagnostic system is temporarily unavailable. Please try again in a moment.")
 
 @app.post("/api/predict/audio")
 async def predict_audio(

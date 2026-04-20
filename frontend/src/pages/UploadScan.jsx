@@ -13,8 +13,9 @@ export default function UploadScan({ user }) {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [deepScan, setDeepScan] = useState(false);
-  const [statusStep, setStatusStep] = useState(0); // 0: Idle, 1: Optimizing, 2: Scanning, 3: Finalizing
+  const [statusStep, setStatusStep] = useState(0); // 0: Idle, 1: Optimizing, 2: Scanning, 3: Rescuing, 4: Finalizing
   const loadingTimer = useRef(null);
+  const abortControllerRef = useRef(null);
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
@@ -60,38 +61,67 @@ export default function UploadScan({ user }) {
 
     const activeMode = forcedMode || (deepScan ? "neural" : "heuristic");
 
-    // Safety timeout: If no response after 75s, show a manual reset option
+    // Create a new AbortController for this request
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // Safety "Last Resort" timer: if even heuristic takes >75s, show a reset message
     loadingTimer.current = setTimeout(() => {
-      setError("The analysis is taking longer than usual. This can happen during high traffic. Please wait a bit longer or try reset.");
+      if (!controller.signal.aborted) {
+        setError("The analysis is taking longer than usual. Please wait a bit longer or try again.");
+      }
     }, 75000);
 
-    // Auto-Rescue: If Neural Scan hangs for >25s, automatically rescue with Heuristic
+    // Auto-Rescue: If Neural mode doesn't resolve in 25s, abort and fall back immediately.
     let rescueTimer = null;
     if (activeMode === "neural") {
        rescueTimer = setTimeout(() => {
-          showToast("AI Engine is busy. Rescuing with High-Speed Analysis...", "warning");
+          if (!controller.signal.aborted) {
+            showToast("AI Engine is taking too long. Activating High-Speed Rescue...", "warning");
+            setStatusStep(3); // "Rescue Mode" status
+            controller.abort(); // Cancel the current inflight request — triggers catch block
+          }
        }, 25000);
     }
 
     try {
-      // Step 1: Optimizing Image
-      await new Promise(r => setTimeout(r, 800)); 
       setStatusStep(2); // Scanning
 
-      const result = await predictScan(user.user_id, file, activeMode);
+      const result = await predictScan(user.user_id, file, activeMode, controller.signal);
       
-      setStatusStep(3); // Finalizing
-      await new Promise(r => setTimeout(r, 800));
+      setStatusStep(4); // Finalizing
+      await new Promise(r => setTimeout(r, 600));
 
       showToast("Scan analyzed successfully!", "success");
       navigate(`/results/${result.id}`, { state: { result } });
     } catch (err) {
+      // Check if the abort was triggered by our Auto-Rescue timer
+      const wasAborted = err.name === 'AbortError' || err.name === 'CanceledError' || err.code === 'ERR_CANCELED';
+
+      if (wasAborted && activeMode === "neural") {
+        // --RESCUE--: Silently re-fire with heuristic mode
+        if (rescueTimer) clearTimeout(rescueTimer);
+        if (loadingTimer.current) clearTimeout(loadingTimer.current);
+        abortControllerRef.current = null;
+        // Reset state temporarily so the next call can set it again
+        setIsUploading(false);
+        setStatusStep(0);
+        handleUpload("heuristic");
+        return;
+      }
+
       console.error("DIAGNOSTIC FAULT:", err);
       
-      // If neural failed, try one last immediate heuristic rescue
-      if (activeMode === "neural") {
+      // If neural failed non-abort error, try one last heuristic rescue
+      if (activeMode === "neural" && !wasAborted) {
           showToast("Neural scan failed. Falling back to High-Speed Analysis...", "info");
-          return handleUpload("heuristic");
+          if (rescueTimer) clearTimeout(rescueTimer);
+          if (loadingTimer.current) clearTimeout(loadingTimer.current);
+          abortControllerRef.current = null;
+          setIsUploading(false);
+          setStatusStep(0);
+          handleUpload("heuristic");
+          return;
       }
 
       let msg;
@@ -109,7 +139,15 @@ export default function UploadScan({ user }) {
       setStatusStep(0);
       if (rescueTimer) clearTimeout(rescueTimer);
       if (loadingTimer.current) clearTimeout(loadingTimer.current);
+      abortControllerRef.current = null;
     }
+  };
+
+  const statusMessages = {
+    1: "Optimizing Imagery...",
+    2: deepScan ? "Deep Neural Scanning..." : "High-Speed Scanning...",
+    3: "Auto-Rescue Active — Switching Engine...",
+    4: "Packaging Results...",
   };
 
   return (
@@ -156,6 +194,7 @@ export default function UploadScan({ user }) {
              <div className="flex items-center gap-3 bg-white/5 p-2 rounded-2xl border border-white/10">
                 <span className={`text-[10px] font-bold uppercase tracking-wider ${!deepScan ? 'text-cyan-400' : 'text-slate-500'}`}>High-Speed</span>
                 <button 
+                  id="engine-toggle-btn"
                   onClick={() => setDeepScan(!deepScan)}
                   className={`w-12 h-6 rounded-full relative transition-all duration-300 ${deepScan ? 'bg-indigo-600 shadow-[0_0_10px_rgba(99,102,241,0.5)]' : 'bg-slate-700'}`}
                 >
@@ -172,9 +211,9 @@ export default function UploadScan({ user }) {
              animate={{ opacity: 1, height: 'auto' }}
              className="mb-6 p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex gap-3 items-center"
            >
-              <AlertCircle size={16} className="text-indigo-400" />
+              <AlertCircle size={16} className="text-indigo-400 shrink-0" />
               <p className="text-[10px] text-indigo-200 font-medium leading-relaxed">
-                 <strong className="text-indigo-400">Deep Analysis Selected:</strong> This mode uses high-complexity neural layers for detailed pathology mapping. Processing may take longer and requires significant server resources.
+                 <strong className="text-indigo-400">Deep Analysis Selected:</strong> Uses high-complexity neural layers for detailed pathology mapping. If no response in 25 seconds, the system will <strong className="text-white">automatically rescue</strong> with High-Speed Analysis to guarantee a result.
               </p>
            </motion.div>
         )}
@@ -203,7 +242,7 @@ export default function UploadScan({ user }) {
               <label className="btn-primary cursor-pointer inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest px-8">
                 <ImageIcon size={18} />
                 Open File Explorer
-                <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+                <input id="xray-file-input" type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
               </label>
               
               <div className="mt-10 flex gap-6 text-[10px] font-mono text-slate-600 uppercase tracking-[0.25em]">
@@ -263,7 +302,8 @@ export default function UploadScan({ user }) {
             className="mt-10 flex justify-center border-t border-white/5 pt-10"
           >
             <button
-              onClick={handleUpload}
+              id="start-analysis-btn"
+              onClick={() => handleUpload()}
               disabled={isUploading}
               className="btn-primary w-full sm:w-auto min-w-[300px] flex items-center justify-center gap-3 disabled:opacity-40"
             >
@@ -274,17 +314,14 @@ export default function UploadScan({ user }) {
                       <span key={i} className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: `${d}s` }} />
                     ))}
                   </div>
-                  <span className="ml-2">
-                    {statusStep === 1 && "Optimizing Imagery..."}
-                    {statusStep === 2 && "Neural Scanning..."}
-                    {statusStep === 3 && "Packaging Results..."}
-                    {!statusStep && "Processing Neural Scan..."}
+                  <span className={`ml-2 ${statusStep === 3 ? 'text-amber-300' : ''}`}>
+                    {statusMessages[statusStep] || "Processing..."}
                   </span>
                 </>
               ) : (
                 <>
                   <Zap size={18} />
-                  Start AI Analysis
+                  {deepScan ? 'Start Deep Neural Analysis' : 'Start High-Speed Analysis'}
                 </>
               )}
             </button>
@@ -296,8 +333,8 @@ export default function UploadScan({ user }) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
          {[
            { title: 'Privacy First', desc: 'Secure local processing and encryption.', icon: ShieldCheck, color: 'text-indigo-400' },
-           { title: 'Global Precision', desc: 'Trained on 100k+ clinical images.', icon: Zap, color: 'text-violet-400' },
-           { title: 'Real-time', desc: 'Results in under 2 seconds.', icon: Loader2, color: 'text-emerald-400' }
+           { title: 'Auto-Rescue', desc: 'AI auto-switches engines to guarantee a result.', icon: Zap, color: 'text-violet-400' },
+           { title: 'Real-time', desc: 'High-Speed results in under 2 seconds.', icon: Loader2, color: 'text-emerald-400' }
          ].map(card => (
            <div key={card.title} className="glass-card p-6 rounded-2xl flex items-start gap-4">
               <div className={`p-2 rounded-lg bg-white/5 ${card.color}`}>

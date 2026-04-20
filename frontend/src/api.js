@@ -75,18 +75,25 @@ export const logout = () => {
   localStorage.removeItem('access_token');
 };
 
-export const predictScan = async (userId, file, mode = "heuristic") => {
+export const predictScan = async (userId, file, mode = "heuristic", signal = null) => {
   const formData = new FormData();
   formData.append('user_id', userId);
   formData.append('file', file);
   formData.append('mode', mode);
 
-  const response = await api.post('predict', formData, {
+  const config = {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
     timeout: 120000, // 120s for AI inference - DenseNet model load can be slow on cold start
-  });
+  };
+
+  // Wire the AbortController signal if provided (enables Auto-Rescue cancellation)
+  if (signal) {
+    config.signal = signal;
+  }
+
+  const response = await api.post('predict', formData, config);
   return response.data;
 };
 

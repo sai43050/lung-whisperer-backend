@@ -106,6 +106,13 @@ export default function Results() {
   const findings = result.findings || [];
   const suggestions = result.suggestions || [];
 
+  // Determine which engine processed the scan
+  const engine = result.engine || 'heuristic';
+  const isNeural = engine === 'neural';
+  const isRescued = engine === 'heuristic_fallback';
+  const engineLabel = isNeural ? 'Deep Neural Engine' : isRescued ? 'Auto-Rescue Engine' : 'High-Speed Engine';
+  const engineColor = isNeural ? 'text-indigo-400 border-indigo-500/30 bg-indigo-500/10' : isRescued ? 'text-amber-400 border-amber-500/30 bg-amber-500/10' : 'text-cyan-400 border-cyan-500/30 bg-cyan-500/10';
+
   return (
     <div className="max-w-6xl mx-auto pt-6 pb-24 relative z-10 px-4 space-y-6">
       {/* Navigation & Actions */}
@@ -151,12 +158,16 @@ export default function Results() {
                     : <AlertCircle className="h-10 w-10 text-rose-400 relative z-10" />}
                 </div>
                 <div>
-                  <div className="flex items-center gap-2 mb-1.5">
+                  <div className="flex flex-wrap items-center gap-2 mb-1.5">
                     <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest">
                       Diagnosis Result • ID: #{String(result.id).padStart(5, '0')}
                     </span>
                     <div className="flex px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-mono text-emerald-400 uppercase">
                        Verified
+                    </div>
+                    <div className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[8px] font-mono font-bold uppercase tracking-wider ${engineColor}`}>
+                      <div className="w-1 h-1 rounded-full bg-current animate-pulse" />
+                      {engineLabel}
                     </div>
                   </div>
                   <h1 className="text-4xl font-display font-black text-white tracking-tight leading-none mb-1">
@@ -374,8 +385,8 @@ export default function Results() {
                   <span className="text-[9px] font-mono text-slate-600 uppercase">HIPAA Encrypted</span>
                </div>
                <div className="flex items-center gap-2">
-                  <Activity size={14} className="text-cyan-500" />
-                  <span className="text-[9px] font-mono text-slate-600 uppercase">Advanced System v4.1</span>
+                  <Activity size={14} className={isNeural ? 'text-indigo-500' : isRescued ? 'text-amber-500' : 'text-cyan-500'} />
+                  <span className={`text-[9px] font-mono uppercase ${isNeural ? 'text-indigo-500' : isRescued ? 'text-amber-500' : 'text-slate-600'}`}>{engineLabel}</span>
                </div>
             </div>
           </motion.div>
