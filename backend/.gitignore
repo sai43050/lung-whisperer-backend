@@ -18,6 +18,7 @@ dataset/
 # Large model weights — Railway will use TorchXRayVision auto-download
 # Keep only the custom-trained audio & xray weights we built (<50MB each)
 # audio_model_weights.pth -> OK (44MB, within limit)
+!audio_model_weights.pth
 # model_weights_densenet121.pth -> OK (28MB)
 # Exclude the redundant copies:
 audio_model_weights_resnet18.pth
