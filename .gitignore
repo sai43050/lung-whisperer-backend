@@ -29,6 +29,8 @@ pip-log.txt
 
 # Models (Large binary files - handle via external storage or download)
 *.pth
+!backend/audio_model_weights.pth
+!backend/model_weights_densenet121.pth
 Tubercolosis.zip
 archive.zip
 cough sound analysis.zip
