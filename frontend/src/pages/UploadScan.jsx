@@ -65,23 +65,35 @@ export default function UploadScan({ user }) {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // Safety "Last Resort" timer: if even heuristic takes >75s, show a reset message
+    // Safety "Last Resort" timer
     loadingTimer.current = setTimeout(() => {
       if (!controller.signal.aborted) {
-        setError("The analysis is taking longer than usual. Please wait a bit longer or try again.");
+        setError("System reached max capacity. Please try again in 1 minute.");
       }
-    }, 75000);
+    }, 60000);
 
-    // Auto-Rescue: If Neural mode doesn't resolve in 25s, abort and fall back immediately.
-    let rescueTimer = null;
+    // High-Speed Auto-Pivot: 
+    // If Neural engine is slow (>4s), trigger the Fast Track (Gemini) in parallel.
+    let fastTrackTimer = null;
+    let fastTrackAbort = new AbortController();
+    
     if (activeMode === "neural") {
-       rescueTimer = setTimeout(() => {
+       fastTrackTimer = setTimeout(async () => {
           if (!controller.signal.aborted) {
-            showToast("AI Engine is taking too long. Activating High-Speed Rescue...", "warning");
-            setStatusStep(3); // "Rescue Mode" status
-            controller.abort(); // Cancel the current inflight request — triggers catch block
+            showToast("Primary Engine Busy. Activating High-Speed Cloud AI...", "info");
+            setStatusStep(3); // "Fast Track" status
+            try {
+              const fastResult = await predictScanFast(user.user_id, file);
+              if (loading) { // Check if still loading original
+                 setResults(fastResult);
+                 setLoading(false);
+                 controller.abort(); // Cancel slow primary
+              }
+            } catch (err) {
+              console.error("Fast track attempt failed", err);
+            }
           }
-       }, 25000);
+       }, 4000);
     }
 
     try {
