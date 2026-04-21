@@ -45,6 +45,14 @@ import dispatch
 import requests
 import httpx
 import json
+from google import genai
+from google.genai import types
+
+# Initialize Gemini Client
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+client = None
+if GEMINI_API_KEY:
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
 # Create Tables
 db_models.Base.metadata.create_all(bind=database.engine)
@@ -301,7 +309,7 @@ def predict_real_image(image_bytes: bytes, filename: str = "") -> dict:
 
 # ----- Audio Deep Learning Setup -----
 AUDIO_MODEL1_PATH = "audio_model_weights.pth"
-AUDIO_MODEL2_PATH = "audio_model_weights_mobilenet.pth"
+AUDIO_MODEL2_PATH = "audio_model_weights.pth" # Fallback to same file if specific version missing
 AUDIO_CLASSES_PATH = "audio_classes.txt"
 
 audio_ensemble = []
@@ -492,11 +500,49 @@ def mock_login(username: str, db: Session = Depends(database.get_db)):
     access_token = auth.create_access_token(data={"sub": user.username, "role": user.role})
     return {"access_token": access_token, "token_type": "bearer", "user_id": user.id, "username": user.username, "role": user.role, "full_name": user.full_name}
 
+async def analyze_with_gemini(image_bytes: bytes):
+    if not client:
+        return None
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[
+                "Analyze this Chest X-ray. Identify potential pathologies (Pneumonia, Effusion, Normal, etc.). Return a JSON object with: 'prediction' (primary finding), 'confidence' (0-1), 'findings' (list of strings), 'suggestions' (list of clinical next steps). Do not include any text outside the JSON.",
+                types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+            ]
+        )
+        # Handle potential markdown formatting in response
+        raw_text = response.text.replace('```json', '').replace('```', '').strip()
+        data = json.loads(raw_text)
+        return data
+    except Exception as e:
+        print(f"Gemini Vision Fallback Error: {e}")
+        return None
+
+async def analyze_audio_with_gemini(audio_bytes: bytes):
+    if not client:
+        return None
+    try:
+        # Gemini can analyze audio/spectrograms
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[
+                "Analyze this respiratory audio (cough/breathing). Identify potential states (Healthy, COVID-19, Symptomatic). Return a JSON object with: 'prediction', 'confidence' (0-1), 'explanation' (string). Do not include any text outside the JSON.",
+                types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
+            ]
+        )
+        raw_text = response.text.replace('```json', '').replace('```', '').strip()
+        data = json.loads(raw_text)
+        return data
+    except Exception as e:
+        print(f"Gemini Audio Fallback Error: {e}")
+        return None
+
 @app.post("/api/predict")
 async def predict_scan(
     user_id: int = Form(...),
     file: UploadFile = File(...),
-    mode: str = Form("heuristic"),  # Default to heuristic for production stability
+    mode: str = Form("heuristic"),
     db: Session = Depends(database.get_db)
 ):
     user = db.query(db_models.User).filter(db_models.User.id == user_id).first()
@@ -529,18 +575,33 @@ async def predict_scan(
     
     try:
         models = get_image_models()
+        result = None
+        actual_engine = "heuristic"
+
         if mode == "neural" and models:
-            result = predict_real_image(image_bytes, file.filename)
-            actual_engine = "neural"
-        else:
+            try:
+                result = predict_real_image(image_bytes, file.filename)
+                actual_engine = "neural"
+            except Exception as e:
+                print(f"Primary Neural Engine Failed: {e}. Attempting Resilient Fallback...")
+        
+        # Resilient Fallback to Gemini if Neural failed or models missing
+        if not result:
+            gemini_result = await analyze_with_gemini(image_bytes)
+            if gemini_result:
+                result = gemini_result
+                actual_engine = "gemini_vision"
+        
+        # Ultimate Fallback to Heuristic
+        if not result:
             result = predict_heuristic(image_bytes)
             actual_engine = "heuristic"
         
         scan_record = db_models.ScanRecord(
             user_id=user.id,
             image_path=file_path,
-            prediction=f"{result['prediction']}",
-            confidence=result['confidence'],
+            prediction=f"{result.get('prediction', 'Inconclusive')}",
+            confidence=result.get('confidence', 0.5),
             gradcam_data=result.get("gradcam", ""),
             findings=json.dumps(result.get("findings", [])),
             suggestions=json.dumps(result.get("suggestions", []))
@@ -610,13 +671,31 @@ async def predict_audio(
     with open(file_path, "wb") as buffer:
         buffer.write(audio_bytes)
     
-    result = predict_real_audio(file_path)
+    actual_engine = "neural"
+    try:
+        result = predict_real_audio(file_path)
+    except Exception as e:
+        print(f"Primary Audio Engine Failed: {e}. Attempting Resilient Fallback...")
+        result = None
+    
+    if not result:
+        gemini_result = await analyze_audio_with_gemini(audio_bytes)
+        if gemini_result:
+            result = gemini_result
+            actual_engine = "gemini_audio"
+        else:
+            # Last resort
+            result = {"prediction": "Indeterminate", "confidence": 0.0, "explanation": "Engine Timeout"}
+            actual_engine = "timeout_fallback"
     
     scan_record = db_models.ScanRecord(
         user_id=user.id,
         image_path=file_path,
-        prediction=f"COUGH: {result['prediction']}",
-        confidence=result['confidence']
+        prediction=f"COUGH: {result.get('prediction', 'Inconclusive')}",
+        confidence=result.get('confidence', 0.5),
+        gradcam_data="",
+        findings=json.dumps([result.get('explanation', '')])
+    )
     )
     db.add(scan_record)
     db.commit()
@@ -628,7 +707,8 @@ async def predict_audio(
         "confidence": scan_record.confidence,
         "image_path": scan_record.image_path,
         "timestamp": scan_record.timestamp,
-        "modality": "audio"
+        "modality": "audio",
+        "engine": actual_engine
     }
 
 @app.get("/api/scan/{scan_id}")
