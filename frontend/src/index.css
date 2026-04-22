@@ -35,29 +35,13 @@
     overflow-x: hidden;
   }
 
-  /* Global Background Logo Overlay */
-  body::before {
-    content: '';
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    width: 140vh;
-    height: 140vh;
-    transform: translate(-50%, -50%) rotate(-10deg);
-    background-image: url('./assets/hero_logo.png');
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
-    opacity: 0.035;
-    filter: blur(2px);
-    pointer-events: none;
-    z-index: -1;
-    animation: background-slow-rotate 180s linear infinite;
+  @keyframes slow-rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
-  @keyframes background-slow-rotate {
-    from { transform: translate(-50%, -50%) rotate(0deg); }
-    to { transform: translate(-50%, -50%) rotate(360deg); }
+  .animate-slow-rotate {
+    animation: slow-rotate 120s linear infinite;
   }
 
   h1, h2, h3, h4, h5, h6 {

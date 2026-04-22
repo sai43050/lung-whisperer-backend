@@ -17,6 +17,7 @@ import WeatherAQI from './pages/WeatherAQI';
 import Medications from './pages/Medications';
 import { getCurrentUser } from './api';
 import { ToastProvider } from './components/Toast';
+import brandLogo from './assets/hero_logo.png';
 
 // --- Error Boundary Component ---
 class ErrorBoundary extends React.Component {
@@ -83,9 +84,20 @@ function App() {
     <ErrorBoundary>
       <ToastProvider>
         <Router>
-          <div className="min-h-screen flex flex-col font-sans">
+          <div className="min-h-screen flex flex-col font-sans relative">
+            {/* Global Branding Watermark - Vignan Logo */}
+            <div 
+              className="fixed inset-0 pointer-events-none z-0 flex items-center justify-center overflow-hidden opacity-35 mix-blend-overlay"
+            >
+              <img 
+                src={brandLogo} 
+                alt="Vignan Logo" 
+                className="w-[90vh] h-[90vh] object-contain animate-pulse-slow filter grayscale contrast-125"
+              />
+            </div>
+
             <Navbar user={user} onLogout={handleLogout} />
-            <main className="flex-grow container mx-auto px-4 py-8 pt-24">
+            <main className="flex-grow container mx-auto px-4 py-8 pt-24 relative z-10">
               <Routes>
                 <Route path="/login" element={!user ? <Login onLogin={setUser} /> : <Navigate to={user.role === 'patient' ? '/patient-dashboard' : '/doctor-panel'} />} />
                 

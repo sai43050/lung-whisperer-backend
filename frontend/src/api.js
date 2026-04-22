@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'https://sai43050-lung-whisperer-engine.hf.space/api',
+  baseURL: '/api',
   timeout: 180000, 
 });
 

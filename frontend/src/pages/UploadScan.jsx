@@ -43,6 +43,9 @@ export default function UploadScan({ user }) {
   };
 
   const handleUpload = async (forcedMode = null) => {
+    // Defense: If forcedMode is a synthetic event (from direct onClick), ignore it
+    const sanitizedMode = typeof forcedMode === 'string' ? forcedMode : null;
+    
     if (!file) {
       setError("Please select an image first.");
       showToast("No scan selected.", "warning");
@@ -59,7 +62,7 @@ export default function UploadScan({ user }) {
     setError(null);
     setStatusStep(1);
 
-    const activeMode = forcedMode || (deepScan ? "neural" : "heuristic");
+    const activeMode = sanitizedMode || (deepScan ? "neural" : "heuristic");
 
     // Create a new AbortController for this request
     const controller = new AbortController();

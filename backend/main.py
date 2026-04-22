@@ -1,4 +1,5 @@
 import numpy as np
+import subprocess
 print(f"NumPy Version: {np.__version__}")
 import matplotlib
 matplotlib.use('Agg')
@@ -22,7 +23,6 @@ from dotenv import load_dotenv
 load_dotenv()
 import shutil
 import io
-import math
 import torch
 import torch.nn as nn
 from torchvision import models as tv_models
@@ -31,7 +31,6 @@ from PIL import Image
 # numpy already imported at top
 import torchxrayvision as xrv
 import cv2
-import base64
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
@@ -44,7 +43,6 @@ import agent
 import dispatch
 import requests
 import httpx
-import json
 from google import genai
 from google.genai import types
 
@@ -93,12 +91,41 @@ def read_root():
 def health_check():
     return {
         "status": "healthy", 
-        "version": "1.0.9-ULTRA-SYNC", 
-        "engine": "Hybrid-Free-16GB-RAM",
+        "version": "1.1.0-ULTRA-STABLE", 
+        "engine": "Hybrid-Free-16GB-RAM-HARDENED",
         "lifespan_initialized": getattr(app.state, "models_ready", False),
         "image_models": len(image_ensemble),
         "audio_models": len(audio_ensemble),
         "numpy": np.__version__
+    }
+
+@app.get("/api/admin/verify-system")
+def verify_system_status():
+    ffmpeg_present = False
+    ffmpeg_version = "Missing"
+    try:
+        output = subprocess.check_output(["ffmpeg", "-version"], stderr=subprocess.STDOUT).decode()
+        ffmpeg_present = True
+        ffmpeg_version = output.splitlines()[0]
+    except Exception as e:
+        ffmpeg_version = str(e)
+
+    return {
+        "version": "1.1.0-ULTRA-STABLE",
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "dependencies": {
+            "ffmpeg": ffmpeg_present,
+            "ffmpeg_info": ffmpeg_version,
+            "torchaudio": getattr(torchaudio, "__version__", "Unknown"),
+            "numpy": np.__version__,
+            "torch": torch.__version__
+        },
+        "engine": {
+            "image_models": len(image_ensemble),
+            "audio_models": len(audio_ensemble),
+            "lifespan_ready": getattr(app.state, "models_ready", False)
+        },
+        "deployment": "Railway-Hardened-v2"
     }
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
@@ -127,16 +154,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    allow_origin_regex="https://.*\.vercel\.app"
+    allow_origin_regex=r"https://.*\.vercel\.app"
 )
 
 # Mount Socket.io handler
 app.mount("/ws", socket_app)
-
-@app.post("/api/predict/fast")
-async def predict_fast(file: UploadFile = File(...)):
-    contents = await file.read()
-    return predict_heuristic(contents)
 
 # Use Environment variable for UPLOAD_DIR (crucial for Hugging Face /tmp)
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
@@ -240,7 +262,7 @@ def predict_heuristic(image_bytes: bytes) -> dict:
 def predict_real_image(image_bytes: bytes, filename: str = "") -> dict:
     models = get_image_models()
     if not models:
-        return {"prediction": "Normal", "confidence": 50.0}
+        raise RuntimeError("Local image models not initialized.")
 
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     transform = transforms.Compose([
@@ -317,8 +339,8 @@ def predict_real_image(image_bytes: bytes, filename: str = "") -> dict:
     }
 
 # ----- Audio Deep Learning Setup -----
-AUDIO_MODEL1_PATH = "audio_model_weights.pth"
-AUDIO_MODEL2_PATH = "audio_model_weights.pth" # Fallback to same file if specific version missing
+AUDIO_MODEL1_PATH = "audio_model_weights_resnet18.pth"
+AUDIO_MODEL2_PATH = "audio_model_weights_resnet18.pth" # Fallback to same file if specific version missing
 AUDIO_CLASSES_PATH = "audio_classes.txt"
 
 audio_ensemble = []
@@ -359,54 +381,50 @@ def get_audio_models():
 def predict_real_audio(file_path: str) -> dict:
     models = get_audio_models()
     if not models:
-        return {"prediction": "healthy", "confidence": 50.0}
+        raise RuntimeError("Local audio models not initialized.")
+    
+    waveform, sample_rate = torchaudio.load(file_path)
+    if waveform.shape[0] > 1:
+        waveform = torch.mean(waveform, dim=0, keepdim=True)
+            
+    mel_spectrogram = T.MelSpectrogram(sample_rate=16000, n_mels=128)(waveform)
+    
+    import torch.nn.functional as F
+    spectrogram = mel_spectrogram.unsqueeze(0)
+    spectrogram = F.interpolate(spectrogram, size=(224, 224), mode='bilinear', align_corners=False)
+    tensor = spectrogram.squeeze(0).repeat(3, 1, 1).unsqueeze(0).to(device)
+    
+    with torch.no_grad():
+        probs_accum = None
+        for model in audio_ensemble:
+            outputs = model(tensor)
+            probs = torch.nn.functional.softmax(outputs, dim=1)[0]
+            if probs_accum is None:
+                probs_accum = probs
+            else:
+                probs_accum += probs
         
-    try:
-        waveform, sample_rate = torchaudio.load(file_path)
-        if waveform.shape[0] > 1:
-            waveform = torch.mean(waveform, dim=0, keepdim=True)
-            
-        mel_spectrogram = T.MelSpectrogram(sample_rate=16000, n_mels=128)(waveform)
+        probs_accum /= len(audio_ensemble)
+        confidence, predicted = torch.max(probs_accum, 0)
         
-        import torch.nn.functional as F
-        spectrogram = mel_spectrogram.unsqueeze(0)
-        spectrogram = F.interpolate(spectrogram, size=(224, 224), mode='bilinear', align_corners=False)
-        tensor = spectrogram.squeeze(0).repeat(3, 1, 1).unsqueeze(0).to(device)
+        # Map all probabilities to find acoustic signatures
+        all_probs = probs_accum.cpu().numpy()
+        acoustic_signatures = []
+        for i, cls in enumerate(audio_classes):
+            acoustic_signatures.append((cls, float(all_probs[i])))
+        acoustic_signatures.sort(key=lambda x: x[1], reverse=True)
         
-        with torch.no_grad():
-            probs_accum = None
-            for model in audio_ensemble:
-                outputs = model(tensor)
-                probs = torch.nn.functional.softmax(outputs, dim=1)[0]
-                if probs_accum is None:
-                    probs_accum = probs
-                else:
-                    probs_accum += probs
-            
-            probs_accum /= len(audio_ensemble)
-            confidence, predicted = torch.max(probs_accum, 0)
-            
-            # Map all probabilities to find acoustic signatures
-            all_probs = probs_accum.cpu().numpy()
-            acoustic_signatures = []
-            for i, cls in enumerate(audio_classes):
-                acoustic_signatures.append((cls, float(all_probs[i])))
-            acoustic_signatures.sort(key=lambda x: x[1], reverse=True)
-            
-            findings = [f"Acoustic match for {cls}: {score*100:.1f}%" for cls, score in acoustic_signatures]
-            suggestions = ["Consult a physician if symptomatic"]
-            if acoustic_signatures[0][0] != "healthy" and acoustic_signatures[0][1] > 0.5:
-                suggestions = [f"High match for {acoustic_signatures[0][0]} pattern", "Advise clinical evaluation", "Keep taking regular SpO2 readings"]
+        findings = [f"Acoustic match for {cls}: {score*100:.1f}%" for cls, score in acoustic_signatures]
+        suggestions = ["Consult a physician if symptomatic"]
+        if acoustic_signatures[0][0] != "healthy" and acoustic_signatures[0][1] > 0.5:
+            suggestions = [f"High match for {acoustic_signatures[0][0]} pattern", "Advise clinical evaluation", "Keep taking regular SpO2 readings"]
 
-        return {
-            "prediction": audio_classes[predicted.item()],
-            "confidence": round(confidence.item() * 100, 1),
-            "findings": findings,
-            "suggestions": suggestions
-        }
-    except Exception as e:
-        print("Audio Inference Error:", e)
-        return {"prediction": "Processing Error", "confidence": 0.0}
+    return {
+        "prediction": audio_classes[predicted.item()],
+        "confidence": round(confidence.item() * 100, 1),
+        "findings": findings,
+        "suggestions": suggestions
+    }
 # -------------------------------
 
 # --- Pydantic Schemas ---
@@ -600,11 +618,16 @@ async def predict_scan(
             if gemini_result:
                 result = gemini_result
                 actual_engine = "gemini_vision"
+                # Add technical note to findings
+                if "findings" not in result: result["findings"] = []
+                result["findings"].append("Analysis verified by Gemini 2.0 High-Res Engine.")
         
         # Ultimate Fallback to Heuristic
         if not result:
             result = predict_heuristic(image_bytes)
             actual_engine = "heuristic"
+            if "findings" not in result: result["findings"] = []
+            result["findings"].append("Analysis performed by Resilient Heuristic Fallback.")
         
         scan_record = db_models.ScanRecord(
             user_id=user.id,
@@ -734,6 +757,8 @@ async def predict_audio(
         if gemini_result:
             result = gemini_result
             actual_engine = "gemini_audio"
+            # Add technical note
+            result["explanation"] = result.get("explanation", "") + " (Analysis verified by Gemini Acoustic Engine)"
         else:
             # Last resort
             result = {"prediction": "Indeterminate", "confidence": 0.0, "explanation": "Engine Timeout"}
@@ -746,7 +771,6 @@ async def predict_audio(
         confidence=result.get('confidence', 0.5),
         gradcam_data="",
         findings=json.dumps([result.get('explanation', '')])
-    )
     )
     db.add(scan_record)
     db.commit()
