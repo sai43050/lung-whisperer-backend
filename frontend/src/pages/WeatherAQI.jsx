@@ -6,7 +6,7 @@ const WeatherAQI = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [locationName, setLocationName] = useState('Sathupalli, Telangana');
+  const [locationName, setLocationName] = useState('Detecting Location...');
 
   const fetchWeather = async (lat, lon) => {
     setLoading(true);
@@ -35,11 +35,11 @@ const WeatherAQI = () => {
 
     // 3. Reverse Geocode (City Name) - Optional
     try {
-      const geoResp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+      const geoResp = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
       if (geoResp.ok) {
         const geoJson = await geoResp.json();
-        const city = geoJson.address.city || geoJson.address.town || geoJson.address.village || geoJson.address.suburb || "Unknown Sector";
-        const region = geoJson.address.state || geoJson.address.country;
+        const city = geoJson.city || geoJson.locality || "Unknown Sector";
+        const region = geoJson.principalSubdivision || geoJson.countryCode;
         setLocationName(`${city}, ${region}`);
       }
     } catch (e) { console.warn("Reverse Geocoding failed", e); }
@@ -100,10 +100,10 @@ const WeatherAQI = () => {
 
   const fetchLocationByIP = async () => {
     try {
-      const resp = await fetch('https://ipapi.co/json/');
+      const resp = await fetch('https://get.geojs.io/v1/ip/geo.json');
       if (resp.ok) {
         const json = await resp.json();
-        return { lat: json.latitude, lon: json.longitude };
+        return { lat: parseFloat(json.latitude), lon: parseFloat(json.longitude) };
       }
     } catch (e) {
       console.warn("IP-based geolocation failed", e);

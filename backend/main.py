@@ -1,5 +1,6 @@
 import numpy as np
 import subprocess
+import datetime
 print(f"NumPy Version: {np.__version__}")
 import matplotlib
 matplotlib.use('Agg')
@@ -745,22 +746,20 @@ async def predict_audio(
     with open(file_path, "wb") as buffer:
         buffer.write(audio_bytes)
     
-    actual_engine = "neural"
-    try:
-        result = predict_real_audio(file_path)
-    except Exception as e:
-        print(f"Primary Audio Engine Failed: {e}. Attempting Resilient Fallback...")
-        result = None
-    
-    if not result:
-        gemini_result = await analyze_audio_with_gemini(audio_bytes)
-        if gemini_result:
-            result = gemini_result
-            actual_engine = "gemini_audio"
-            # Add technical note
-            result["explanation"] = result.get("explanation", "") + " (Analysis verified by Gemini Acoustic Engine)"
-        else:
-            # Last resort
+    # Prioritize Gemini Advanced Acoustic Engine
+    gemini_result = await analyze_audio_with_gemini(audio_bytes)
+    if gemini_result:
+        result = gemini_result
+        actual_engine = "gemini_audio"
+        result["explanation"] = result.get("explanation", "") + " (Analysis performed by Gemini Elite Acoustic Engine)"
+    else:
+        print("Gemini Audio Engine unavailable. Attempting Resilient Local Fallback...")
+        try:
+            result = predict_real_audio(file_path)
+            actual_engine = "neural"
+            result["explanation"] = "Local Acoustic Analysis"
+        except Exception as e:
+            print(f"Both Audio Engines Failed: {e}")
             result = {"prediction": "Indeterminate", "confidence": 0.0, "explanation": "Engine Timeout"}
             actual_engine = "timeout_fallback"
     
