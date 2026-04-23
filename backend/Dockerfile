@@ -2,31 +2,23 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# System deps
+# System dependencies for Medical Vision and Audio
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev libgl1 libglib2.0-0 ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install CPU-only PyTorch first
-RUN pip install --no-cache-dir \
-    torch==2.2.2+cpu torchvision==0.17.2+cpu torchaudio==2.2.2+cpu \
-    --extra-index-url https://download.pytorch.org/whl/cpu
-
-# Hard-pin numpy BEFORE installing other packages.
-RUN pip install --no-cache-dir "numpy>=1.26.0,<1.27.0" && \
-    python -c "import numpy; print(f'Validated NumPy: {numpy.__version__}')"
-
+# Optimize for Railway: Install core dependencies in a single layer
 COPY requirements.txt .
-# Use --constraint to enforce numpy pin during full install and verify after
-RUN echo "numpy>=1.26.0,<1.27.0" > /constraints.txt && \
-    pip install --no-cache-dir \
-    -r requirements.txt \
-    -c /constraints.txt \
-    --extra-index-url https://download.pytorch.org/whl/cpu && \
-    python -c "import numpy; print(f'Final NumPy: {numpy.__version__}')"
+
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+
 RUN mkdir -p uploads
 
 EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Start with optimized worker count for stability
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
