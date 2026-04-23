@@ -25,20 +25,87 @@ export default function UploadScan({ user }) {
     e.preventDefault();
     const droppedFile = e.dataTransfer.files[0];
     if (droppedFile && droppedFile.type.startsWith('image/')) {
-      setFile(droppedFile);
-      setPreview(URL.createObjectURL(droppedFile));
-      setError(null);
+      // --- CLIENT-SIDE CLINICAL SHIELD ---
+      const img = new Image();
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        img.onload = () => {
+          const ratio = img.width / img.height;
+          if (ratio < 0.4 || ratio > 2.5) {
+            setError("Invalid Clinical Geometry. Please upload a standard X-ray format.");
+            return;
+          }
+          
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = 10; canvas.height = 10;
+          ctx.drawImage(img, 0, 0, 10, 10);
+          const data = ctx.getImageData(0, 0, 10, 10).data;
+          let varVal = 0;
+          for (let i = 0; i<data.length; i+=4) varVal += Math.abs(data[i]-data[i+1]) + Math.abs(data[i+1]-data[i+2]);
+          if (varVal / 25 > 25) {
+            setError("Neural Link Refused: Color photo detected. Only grayscale X-rays permitted.");
+            return;
+          }
+
+          setFile(droppedFile);
+          setPreview(URL.createObjectURL(droppedFile));
+          setError(null);
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(droppedFile);
     } else {
       setError("Please upload a valid image file.");
     }
   }, []);
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
-      setFile(selectedFile);
-      setPreview(URL.createObjectURL(selectedFile));
+      // --- CLIENT-SIDE CLINICAL SHIELD ---
       setError(null);
+      const img = new Image();
+      const reader = new FileReader();
+      
+      reader.onload = (event) => {
+        img.onload = () => {
+          // 1. Aspect Ratio Guard
+          const ratio = img.width / img.height;
+          if (ratio < 0.4 || ratio > 2.5) {
+            setError("Invalid Clinical Geometry. This image does not match standard X-ray dimensions.");
+            setFile(null);
+            setPreview(null);
+            return;
+          }
+
+          // 2. Color Pulse Guard (Canvas Sampling)
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = 10; // Low res for fast sampling
+          canvas.height = 10;
+          ctx.drawImage(img, 0, 0, 10, 10);
+          const data = ctx.getImageData(0, 0, 10, 10).data;
+          
+          let totalColorVariance = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i], g = data[i+1], b = data[i+2];
+            totalColorVariance += Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
+          }
+          
+          if (totalColorVariance / 25 > 25) { // Threshold for color detection
+            setError("Neural Link Refused: This appears to be a color photograph. Please upload a grayscale Chest X-ray.");
+            setFile(null);
+            setPreview(null);
+            return;
+          }
+
+          setFile(selectedFile);
+          setPreview(URL.createObjectURL(selectedFile));
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(selectedFile);
     }
   };
 

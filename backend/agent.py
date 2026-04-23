@@ -24,32 +24,55 @@ def get_client():
 
 def generate_medical_report(patient_name, vitals_history, scan_history):
     """
-    Synthesizes the raw vital JSON and prediction strings into a medical narrative.
+    Synthesizes the raw vital JSON and prediction strings into a deep clinical narrative.
     """
     client = get_client()
-
-    vitals_summary = f"Recent Vitals: {len(vitals_history)} records found.\n"
-    if vitals_history:
-        latest = vitals_history[-1]
-        vitals_summary += f"Latest -> SpO2: {latest.spo2}%, Heart Rate: {latest.heart_rate}bpm, Resp Rate: {latest.respiratory_rate}bpm.\n"
     
-    scan_summary = f"Scans/Analytics: {len(scan_history)} records found.\n"
-    for scan in scan_history[:5]: # Take last 5
-        scan_summary += f"- Modality Output: {scan.prediction} (Confidence: {scan.confidence}%)\n"
+    # Calculate Trends for better AI context
+    spo2_vals = [v.spo2 for v in vitals_history] if vitals_history else [0]
+    hr_vals = [v.heart_rate for v in vitals_history] if vitals_history else [0]
+    rr_vals = [v.respiratory_rate for v in vitals_history] if vitals_history else [0]
+    
+    avg_spo2 = sum(spo2_vals) / len(spo2_vals) if spo2_vals else 0
+    max_hr = max(hr_vals) if hr_vals else 0
+    
+    vitals_context = f"""
+    EPIC-LEVEL VITALS ANALYSIS:
+    - Sample Size: {len(vitals_history)} telemetry pings
+    - Average SpO2: {avg_spo2:.2f}% (Min: {min(spo2_vals):.2f}%)
+    - Peak Heart Rate observed: {max_hr} bpm
+    - Respiratory Variability: {min(rr_vals)}-{max(rr_vals)} breaths/min
+    """
+    
+    scan_context = "DIAGNOSTIC SCAN LOGS:\n"
+    for idx, scan in enumerate(scan_history[:5]):
+        scan_context += f"[{idx+1}] Modality: {scan.modality.upper()} | Output: {scan.prediction} | Confidence: {scan.confidence*100:.1f}%\n"
 
     prompt = f"""
-    You are an expert AI Medical Assistant analyzing data for patient: {patient_name}.
-    We use machine learning to predict lung diseases (x-rays and cough audio) and IoT sensors for respiratory vitals.
+    ROLE: You are the Lead AI Medical Officer for Lung Whisperer.
+    PATIENT: {patient_name}
     
-    Here is the recent raw telemetry:
-    ---
-    {vitals_summary}
-    {scan_summary}
-    ---
+    DATASET:
+    {vitals_context}
+    {scan_context}
     
-    Write a structured, concise 3-paragraph Clinical Assessment Report in Markdown format.
-    Include sections for: 1. Current Diagnostic Status, 2. Vital Sign Analysis, 3. Recommended Actions.
-    Make it sound professional, but append a disclaimer that this is AI-generated and not substitute for doctor advice.
+    TASK: Generate a COMPREHENSIVE MEDICAL ASSESSMENT in professional Markdown format.
+    
+    STRUCTURE:
+    # 📑 LUNG WHISPERER CLINICAL SUMMARY
+    ## I. Clinical Impression
+    Provide a high-level summary of the patient's current respiratory state. Analyze the correlation between the ML scan predictions and the live vitals.
+    
+    ## II. Physiological Trend Analysis
+    Analyze the SpO2 and Heart Rate stability. Mention if there's evidence of hypoxia or tachycardia based on the trends provided.
+    
+    ## III. Multi-Modal Diagnostic Cross-Check
+    Do the X-ray findings and Cough findings align or conflict? (e.g., "Consistent with Viral Pneumonia across both modalities").
+    
+    ## IV. Triage & Strategic Recommendations
+    List 3-4 specific clinical next steps (e.g., Bronchoscopy consult, repeated SpO2 tracking, steroid therapy consideration).
+    
+    DISCLAIMER: State clearly that this is an AI-generated synthesis for clinical support and requires manual MD sign-off.
     """
 
     if not client:
@@ -57,7 +80,7 @@ def generate_medical_report(patient_name, vitals_history, scan_history):
 
     try:
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-1.5-pro',
             contents=prompt,
         )
         return response.text
