@@ -560,30 +560,32 @@ async def analyze_with_gemini(image_bytes: bytes):
 async def analyze_audio_with_gemini(audio_bytes: bytes):
     if not client:
         return None
-    try:
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=[
-                "Analyze this respiratory audio (cough/breathing). Identify potential states (Healthy, COVID-19, Symptomatic). Return EXACTLY AND ONLY a JSON dictionary with these keys: 'prediction' (string), 'confidence' (number between 0.1 and 1.0), 'explanation' (string). "
-                "Do NOT include any markdown blocks (like ```json), no conversational text, no preambles. Just valid JSON.",
-                types.Part.from_bytes(data=audio_bytes, mime_type="audio/webm")
-            ]
-        )
-        raw_text = response.text.replace('```json', '').replace('```', '').strip()
+    
+    # Tiered Model Availability List
+    models_to_try = ["gemini-1.5-flash", "gemini-pro"]
+    last_err = ""
+    
+    for model_name in models_to_try:
         try:
-            data = json.loads(raw_text)
-            return data
-        except json.JSONDecodeError:
-            print(f"JSON Parse Error on Audio output. Raw: {raw_text[:100]}")
-            return {
-                "prediction": "Acoustic Pattern Detected (Format Discrepancy)",
-                "confidence": 0.85,
-                "explanation": f"AI parsed acoustic data but structural output was malformed. Raw evaluation: {raw_text[:100]}"
-            }
-    except Exception as e:
-        err_msg = str(e)
-        print(f"Gemini Audio Fallback Error: {err_msg}")
-        return {"error": True, "message": err_msg}
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[
+                    "CLINICAL ACOUSTIC AUDIT: Analyze this respiratory audio. "
+                    "1. Is this a cough or human breathing sound? "
+                    "2. If NO (just noise, silence, or music), return JSON: {'prediction': 'Undetermined Sound', 'confidence': 0.1, 'explanation': 'No cough-like biomarkers detected in the acoustic stream.'} "
+                    "3. If YES, identify the state (Healthy, COVID-19, Symptomatic). Return JSON: {'prediction': 'Cough Detected / [STATE]', 'confidence': 0.9, 'explanation': 'Symptoms: [Deep list of symptoms based on audio characteristics]'} "
+                    "Return ONLY JSON.",
+                    types.Part.from_bytes(data=audio_bytes, mime_type="audio/webm")
+                ]
+            )
+            raw_text = response.text.replace('```json', '').replace('```', '').strip()
+            return json.loads(raw_text)
+        except Exception as e:
+            last_err = str(e)
+            print(f"Model {model_name} failed: {last_err}")
+            continue
+            
+    return {"error": True, "message": last_err}
 
 async def verify_chest_xray(image_bytes: bytes):
     # ANATOMY GATEKEEPER OVERRIDE INITIATED
