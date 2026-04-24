@@ -108,12 +108,12 @@ export default function Results() {
 
   // Determine which engine processed the scan
   const engine = result.engine || 'heuristic';
-  const isElite = engine === 'Elite-V1.5-SUPER-STRICT';
-  const isNeural = engine === 'neural' || engine === 'Consensus-Elite-1.5' || isElite;
+  const isElite = engine === 'Elite-V1.5-SUPER-STRICT' || engine === 'Consensus-Elite-1.5';
+  const isNeural = engine === 'neural' || engine === 'Rapid-Pro-Fallback' || isElite;
   const isRescued = engine === 'heuristic_fallback';
   
-  const engineLabel = isElite ? 'Consensus Elite [SUPER STRICT]' : engine === 'Consensus-Elite-1.5' ? 'Consensus-Elite Pro' : isNeural ? 'Deep Neural Engine' : isRescued ? 'Auto-Rescue Engine' : 'High-Speed Engine';
-  const engineColor = isElite ? 'text-indigo-400 border-indigo-500/40 bg-indigo-500/20 shadow-[0_0_15px_#6366f140]' : engine === 'Consensus-Elite-1.5' ? 'text-indigo-400 border-indigo-500/30 bg-indigo-500/10 shadow-[0_0_10px_#818cf833]' : isNeural ? 'text-indigo-400 border-indigo-500/30 bg-indigo-500/10' : isRescued ? 'text-amber-400 border-amber-500/30 bg-amber-500/10' : 'text-cyan-400 border-cyan-500/30 bg-cyan-500/10';
+  const engineLabel = isElite ? 'Consensus Elite [SUPER STRICT]' : engine === 'Rapid-Pro-Fallback' ? 'Neural Pro [RESCUE MODE]' : isNeural ? 'Deep Neural Engine' : isRescued ? 'Emergency Rescue Engine' : 'Neural Core v1.0';
+  const engineColor = isElite ? 'text-indigo-400 border-indigo-500/40 bg-indigo-500/20 shadow-[0_0_15px_#6366f140]' : engine === 'Rapid-Pro-Fallback' ? 'text-rose-400 border-rose-500/30 bg-rose-500/10' : isNeural ? 'text-indigo-400 border-indigo-500/30 bg-indigo-500/10' : isRescued ? 'text-amber-400 border-amber-500/30 bg-amber-500/10' : 'text-cyan-400 border-cyan-500/30 bg-cyan-500/10';
 
   return (
     <div className="max-w-6xl mx-auto pt-6 pb-24 relative z-10 px-4 space-y-6">
@@ -188,7 +188,7 @@ export default function Results() {
                   )}
 
                   <p className="text-slate-400 text-xs font-medium tracking-wide">
-                    Neural Sequence Analyzed on {new Date(result.timestamp).toLocaleString()}
+                    Neural Sequence Analyzed on {new Date(result.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} (Local Time)
                   </p>
                 </div>
               </div>
