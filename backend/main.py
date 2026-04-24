@@ -581,8 +581,9 @@ async def analyze_audio_with_gemini(audio_bytes: bytes):
                 "explanation": f"AI parsed acoustic data but structural output was malformed. Raw evaluation: {raw_text[:100]}"
             }
     except Exception as e:
-        print(f"Gemini Audio Fallback Error: {e}")
-        return None
+        err_msg = str(e)
+        print(f"Gemini Audio Fallback Error: {err_msg}")
+        return {"error": True, "message": err_msg}
 
 async def verify_chest_xray(image_bytes: bytes):
     # ANATOMY GATEKEEPER OVERRIDE INITIATED
@@ -825,19 +826,21 @@ async def predict_audio(
     
     # Prioritize Gemini Advanced Acoustic Engine
     gemini_result = await analyze_audio_with_gemini(audio_bytes)
-    if gemini_result:
+    if gemini_result and not gemini_result.get("error"):
         result = gemini_result
         actual_engine = "gemini_audio"
         result["explanation"] = result.get("explanation", "") + " (Analysis performed by Gemini Elite Acoustic Engine)"
     else:
-        print("Gemini Audio Engine unavailable. Attempting Resilient Local Fallback...")
+        gemini_err = gemini_result.get("message") if gemini_result else "Unknown Initialization Failure"
+        print(f"Gemini Audio Engine unavailable ({gemini_err}). Attempting Resilient Local Fallback...")
         try:
             result = predict_real_audio(file_path)
             actual_engine = "neural"
             result["explanation"] = "Local Acoustic Analysis"
         except Exception as e:
-            print(f"Both Audio Engines Failed: {e}")
-            result = {"prediction": "Indeterminate", "confidence": 0.0, "explanation": "Engine Timeout"}
+            raw_err = str(e)
+            print(f"Both Audio Engines Failed: {raw_err}")
+            result = {"prediction": "Indeterminate", "confidence": 0.0, "explanation": f"Pipeline Failure: {raw_err} | Gemini: {gemini_err}"}
             actual_engine = "timeout_fallback"
     
     scan_record = db_models.ScanRecord(
@@ -846,7 +849,7 @@ async def predict_audio(
         prediction=f"COUGH: {result.get('prediction', 'Inconclusive')}",
         confidence=result.get('confidence', 0.5),
         gradcam_data="",
-        findings=json.dumps([result.get('explanation', '')])
+        findings=json.dumps([result.get('explanation', ''), f"Gemini Error Flag: {gemini_err if 'gemini_err' in locals() else 'None'}"])
     )
     db.add(scan_record)
     db.commit()
