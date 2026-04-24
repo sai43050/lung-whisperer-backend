@@ -9,19 +9,23 @@ import { checkSystemHealth } from '../api';
 function Navbar({ user, onLogout }) {
   const location = useLocation();
   const activeUser = user || getCurrentUser();
-  const [health, setHealth] = useState({ status: 'connecting', latency: 0 });
+  const [health, setHealth] = useState({ status: 'connecting', latency: 0, ai_active: false });
 
   useEffect(() => {
     const check = async () => {
       try {
         const data = await checkSystemHealth();
-        setHealth({ status: data.status, latency: data.latency });
+        setHealth({ 
+          status: data.status, 
+          latency: data.latency, 
+          ai_active: data.ai_active 
+        });
       } catch (e) {
-        setHealth({ status: 'offline', latency: 0 });
+        setHealth({ status: 'offline', latency: 0, ai_active: false });
       }
     };
     check();
-    const interval = setInterval(check, 60000);
+    const interval = setInterval(check, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -68,10 +72,13 @@ function Navbar({ user, onLogout }) {
             <Link to="/" className="flex items-center space-x-3 pl-3 group">
               <div className="hidden sm:block">
                  <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse" />
-                    <span className="font-display font-black text-xl text-white tracking-tighter">
-                      LUNG<span className="text-emerald-400 font-light">WHISPERER</span>
-                    </span>
+                     <div className={`w-1.5 h-1.5 rounded-full animate-pulse shadow-lg ${
+                        health.ai_active ? 'bg-emerald-400 shadow-emerald-500/50' : 
+                        health.status === 'online' ? 'bg-amber-400 shadow-amber-500/50' : 'bg-rose-500 shadow-rose-500/50'
+                     }`} />
+                     <span className="font-display font-black text-xl text-white tracking-tighter">
+                       LUNG<span className={`${health.ai_active ? 'text-emerald-400' : 'text-slate-500'} font-light transition-colors`}>WHISPERER</span>
+                     </span>
                  </div>
               </div>
             </Link>

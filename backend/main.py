@@ -576,10 +576,11 @@ async def verify_chest_xray(image_bytes: bytes):
         response = client.models.generate_content(
             model="gemini-1.5-pro",
             contents=[
-                "MANDATORY CLINICAL AUDIT: Is this a human Chest X-ray? "
-                "Analyze for ribs, lungs, and heart silhouette. "
-                "If it is a photo of an animal, car, landscape, person (not X-ray), or any other object, answer NO. "
-                "Answer EXACTLY one word: YES or NO.",
+                "MANDATORY CLINICAL AUDIT: Is this image a human Chest X-ray, thoracic scan, or respiratory medical imaging? "
+                "Account for digital contrast variations, pediatric anatomy, or minor tilts. "
+                "Answer YES if it is any medical scan of the chest/lungs. "
+                "Answer NO only if it is clearly a non-medical image (like a person's face, a pet, food, or a landscape). "
+                "Answer ONLY: YES or NO.",
                 types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
             ]
         )

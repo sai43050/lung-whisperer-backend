@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: 'https://lungwhisperer-backend-production.up.railway.app/api',
-  timeout: 180000, 
+  timeout: 300000, 
 });
 
 // Add interceptor to append JWT
