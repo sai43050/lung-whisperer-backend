@@ -585,10 +585,11 @@ async def verify_chest_xray(image_bytes: bytes):
             ]
         )
         ans = response.text.strip().upper()
-        # Strict matching: Must contain YES and NOT contain NO
-        is_valid = "YES" in ans and "NO" not in ans
-        print(f"ANATOMY AUDIT RESULT: [{ans}] -> Valid: {is_valid}")
-        return is_valid
+        print(f"ANATOMY AUDIT RESULT: [{ans}]")
+        # The AI might say 'YES, there are no issues'. The previous logic ('NO not in ans') failed here.
+        if 'YES' in ans:
+             return True
+        return False
     except Exception as e:
         print(f"ANATOMY AUDIT FATAL ERROR (Blocking for Safety): {e}")
         return False # BLOCK BY DEFAULT ON ERROR
