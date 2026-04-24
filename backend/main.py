@@ -533,7 +533,7 @@ async def analyze_with_gemini(image_bytes: bytes):
         return None
     try:
         response = client.models.generate_content(
-            model="gemini-1.5-pro",
+            model="gemini-1.5-flash",
             contents=[
                 "VERIFICATION PROTOCOL: First, determine if this image is a Chest X-ray (CXR). "
                 "If it is NOT a Chest X-ray (e.g., a photo of a person, animal, different organ, or text), return JSON ONLY: {'error': 'INVALID_ANATOMY', 'message': 'The uploaded image is not a Chest X-ray. Analysis restricted to respiratory imaging.'}."
@@ -556,7 +556,7 @@ async def analyze_audio_with_gemini(audio_bytes: bytes):
     try:
         # Gemini can analyze audio/spectrograms
         response = client.models.generate_content(
-            model="gemini-1.5-pro",
+            model="gemini-1.5-flash",
             contents=[
                 "Analyze this respiratory audio (cough/breathing). Identify potential states (Healthy, COVID-19, Symptomatic). Return a JSON object with: 'prediction', 'confidence' (0-1), 'explanation' (string). Do not include any text outside the JSON.",
                 types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
@@ -574,7 +574,7 @@ async def verify_chest_xray(image_bytes: bytes):
         return True # Fallback only if client is missing
     try:
         response = client.models.generate_content(
-            model="gemini-1.5-pro",
+            model="gemini-1.5-flash",
             contents=[
                 "MANDATORY CLINICAL AUDIT: Is this image a human Chest X-ray, thoracic scan, or respiratory medical imaging? "
                 "Account for digital contrast variations, pediatric anatomy, or minor tilts. "

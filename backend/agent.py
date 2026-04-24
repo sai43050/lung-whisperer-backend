@@ -80,7 +80,7 @@ def generate_medical_report(patient_name, vitals_history, scan_history):
 
     try:
         response = client.models.generate_content(
-            model='gemini-1.5-pro',
+            model='gemini-1.5-flash',
             contents=prompt,
         )
         return response.text
