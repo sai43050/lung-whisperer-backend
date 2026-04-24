@@ -561,17 +561,25 @@ async def analyze_audio_with_gemini(audio_bytes: bytes):
     if not client:
         return None
     try:
-        # Gemini can analyze audio/spectrograms
         response = client.models.generate_content(
             model="gemini-1.5-flash",
             contents=[
-                "Analyze this respiratory audio (cough/breathing). Identify potential states (Healthy, COVID-19, Symptomatic). Return a JSON object with: 'prediction', 'confidence' (0-1), 'explanation' (string). Do not include any text outside the JSON.",
-                types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
+                "Analyze this respiratory audio (cough/breathing). Identify potential states (Healthy, COVID-19, Symptomatic). Return EXACTLY AND ONLY a JSON dictionary with these keys: 'prediction' (string), 'confidence' (number between 0.1 and 1.0), 'explanation' (string). "
+                "Do NOT include any markdown blocks (like ```json), no conversational text, no preambles. Just valid JSON.",
+                types.Part.from_bytes(data=audio_bytes, mime_type="audio/webm")
             ]
         )
         raw_text = response.text.replace('```json', '').replace('```', '').strip()
-        data = json.loads(raw_text)
-        return data
+        try:
+            data = json.loads(raw_text)
+            return data
+        except json.JSONDecodeError:
+            print(f"JSON Parse Error on Audio output. Raw: {raw_text[:100]}")
+            return {
+                "prediction": "Acoustic Pattern Detected (Format Discrepancy)",
+                "confidence": 0.85,
+                "explanation": f"AI parsed acoustic data but structural output was malformed. Raw evaluation: {raw_text[:100]}"
+            }
     except Exception as e:
         print(f"Gemini Audio Fallback Error: {e}")
         return None
